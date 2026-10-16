@@ -688,8 +688,9 @@ window.Yarn = (() => {
     const thread = new Thread({ hero: logos.hero, footer: logos.footer });
     if (reduced) { thread.drawn = thread.L; if (logos.footer) logos.footer.set(1); }
     document.querySelectorAll('[data-yarn-underline]').forEach(el => new Underline(el));
-    // palabras cosidas del texto: hilo del color de cada una, siempre puesto
-    document.querySelectorAll('.sq').forEach(el => new Underline(el, { keep: true, color: el.dataset.color }));
+    // palabras cosidas del texto: como el menú, con un hilo del color de cada una
+    // (en pantallas táctiles se cose al entrar en pantalla)
+    document.querySelectorAll('.sq').forEach(el => { el.dataset.yarnShow = ''; new Underline(el, { color: el.dataset.color }); });
     const icon = document.querySelector('[data-yarn-icon]');
     return { logos, thread, icon: icon && new Icon(icon) };
   }
