@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).parent
+VERSION = __import__('time').strftime('%Y%m%d%H%M')
 SRC, OUT = ROOT / 'src', ROOT / 'docs'
 partials = {p.stem: p.read_text() for p in (SRC / 'partials').glob('*.html')}
 
@@ -32,5 +33,7 @@ for page in sorted((SRC / 'pages').glob('*.html')):
     header = re.sub(r'(<a href="%s\.html")' % re.escape(ctx['nav'] or '~'),
                     r'\1 aria-current="page"', partials['header'])
     html = render(partials['head'], ctx) + header + body + partials['footer']
+    # versión en los recursos para que el navegador no use una copia vieja
+    html = re.sub(r'(href|src)="((?:styles|yarn|main|paleta)\.(?:css|js))"', r'\1="\2?v=%s"' % VERSION, html)
     (OUT / page.name).write_text(html)
     print('→', page.name)

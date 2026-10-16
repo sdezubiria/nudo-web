@@ -22,7 +22,6 @@
 
    Marcado:
    - [data-knot]          el hilo hace un nudo alrededor del elemento
-   - [data-pass="left"]   el hilo pasa por el borde izquierdo del elemento
    - [data-yarn-underline] subrayado de hilo al pasar el cursor; si tiene un
                           ancestro [data-yarn-host], ese es el que escucha el hover
    - [data-logo="hero|footer"] logo revelado como hilo
@@ -34,8 +33,28 @@ window.Yarn = (() => {
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const DPR = () => Math.min(devicePixelRatio || 1, 2);
 
-  // Trazo: base en vino y hebras claras cruzadas en diagonal (la torsión del hilo)
+  // Trazo: base en vino y hebras claras cruzadas en diagonal (la torsión del hilo).
+  // Los colores salen de las variables CSS, así cambian con la paleta.
   const STYLE = { color: '#701d3b', ply: 'rgba(255, 218, 218, .72)', width: 3, plyGap: 4.6, plyAngle: 1.05 };
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function rgba(hex, a) {
+    const m = hex.replace('#', ''); if (m.length !== 6 && m.length !== 3) return hex;
+    const h = m.length === 3 ? [...m].map(c => c + c).join('') : m;
+    return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${a})`;
+  }
+  function mix(a, b, t) {
+    const p = h => { const m = h.replace('#', ''); const x = m.length === 3 ? [...m].map(c => c + c).join('') : m; return [1, 3, 5].map(i => parseInt(x.slice(i - 1, i + 1), 16)); };
+    const [x, y] = [p(a), p(b)];
+    return '#' + x.map((c, i) => Math.round(c + (y[i] - c) * t).toString(16).padStart(2, '0')).join('');
+  }
+  function refreshStyle() {
+    STYLE.color = cssVar('--vino') || STYLE.color;
+    // las hebras son el mismo hilo un poco más claro: donde dos tramos se cruzan se ven como textura, no como huecos
+    STYLE.ply = rgba(mix(STYLE.color, cssVar('--rosa') || '#ffdada', 0.55), 0.85);
+    for (const fn of styleListeners) fn();
+  }
+  const styleListeners = new Set();
+  addEventListener('nudo:theme', refreshStyle);
 
   /* ---------------- geometría ---------------- */
 
@@ -71,18 +90,23 @@ window.Yarn = (() => {
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, ang: Math.atan2(b.y - a.y, b.x - a.x) };
   }
 
-  // Nudo: trocoide centrada en (cx, cy) de radio r. f = dirección de avance.
-  // El hilo pasa por un lado del centro y da la vuelta por el otro; entra y
-  // sale con la misma tangente, así que se une sin quiebres a lo que venga.
-  function loop(cx, cy, r, fx, fy, side = 1, n = 40) {
-    const nx = -fy * side, ny = fx * side, a = r * 0.32, pts = [];
-    for (let i = 0; i <= n; i++) {
-      const t = -Math.PI + 2 * Math.PI * i / n;
-      const u = a * t - r * Math.sin(t), v = -r * Math.cos(t);
-      pts.push([cx + fx * u + nx * v, cy + fy * u + ny * v]);
-    }
-    return pts;
+  // Nudo: un bucle como el de la «l» cursiva. El hilo viene por la línea base,
+  // sube, da una vuelta casi circular alrededor de (cx, cy) y vuelve a la
+  // línea cruzándose consigo mismo. Incluye su propia entrada y salida sobre
+  // la línea, para que la curva entre el margen y el nudo sea recta.
+  // f = dirección de avance; side elige de qué lado queda la línea base.
+  function loop(cx, cy, R, fx, fy, side = 1) {
+    const nx = -fy * side, ny = fx * side;        // hacia la línea base
+    const px = cx + nx * 1.5 * R, py = cy + ny * 1.5 * R;
+    // (u: a lo largo del avance, v: hacia el centro del nudo), en radios
+    // entrada por la línea, cruce en (0, .6) y vuelta circular alrededor del centro (0, 1.5)
+    const L = [[-2.8, 0], [-1.5, 0.02], [-0.65, 0.24], [0, 0.6]];
+    for (let i = 0; i <= 14; i++) { const a = (-52 + 284 * i / 14) * Math.PI / 180; L.push([Math.cos(a), 1.5 + Math.sin(a)]); }
+    L.push([0, 0.6], [0.65, 0.24], [1.5, 0.02], [2.8, 0]);
+    return L.map(([u, v]) => [px + fx * u * R - nx * v * R, py + fy * u * R - ny * v * R]);
   }
+  // radio del bucle y distancia de la línea base al centro, para un elemento
+  const knotGeom = r => { const R = r * 0.9; return { R, base: 1.5 * R }; };
 
   /* ---------------- trazo ---------------- */
 
@@ -106,8 +130,8 @@ window.Yarn = (() => {
     ctx.lineTo(b.x, b.y); ctx.stroke();
 
     // hebras: trazos cortos cruzando la base en diagonal, a paso regular
-    ctx.strokeStyle = st.ply; ctx.lineWidth = Math.max(1, st.width * 0.42);
-    const half = st.width * 0.55;
+    ctx.strokeStyle = st.ply; ctx.lineWidth = Math.max(1, st.width * 0.36);
+    const half = st.width * 0.34;
     ctx.beginPath();
     for (let l = Math.ceil(from / st.plyGap) * st.plyGap + st.plyGap * 0.5; l < to - 1; l += st.plyGap) {
       const p = at(S, l);
@@ -130,7 +154,7 @@ window.Yarn = (() => {
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    for (const fn of tickers) fn(dt, now / 1000);
+    for (const fn of tickers) { try { fn(dt, now / 1000); } catch (err) { console.error(err); tickers.delete(fn); } }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -245,6 +269,7 @@ window.Yarn = (() => {
       // el contenido cambia de alto cuando cargan imágenes y fuentes
       new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => this.build(), 150); }).observe(document.body);
       addEventListener('scroll', () => { this.need = true; }, { passive: true });
+      styleListeners.add(() => { this.need = true; });
       tickers.add(dt => this.tick(dt));
     }
 
@@ -258,53 +283,76 @@ window.Yarn = (() => {
     build() {
       const vw = document.documentElement.clientWidth;
       const gx = this.gutter();
+      const xAt = side => side < 0 ? gx : vw - gx;
       const pts = [];
-      const items = [...document.querySelectorAll('[data-knot], [data-pass]')]
-        .map(el => { const r = el.getBoundingClientRect(); return { el, r, y: r.top + scrollY, x: r.left }; })
-        .filter(i => i.r.width > 0)
-        .sort((a, b) => a.y - b.y);
+      let side = -1; // margen por el que baja el hilo: -1 izquierdo, 1 derecho
 
-      // arranque: desde la cola de la «o» del logo baja por el margen derecho
-      // y cruza al izquierdo justo debajo del inicio; si no hay logo, entra por arriba
+      // nudos ordenados de arriba abajo y agrupados por filas
+      // posición en la página sin contar transformaciones (las animaciones de
+      // aparición desplazan los elementos mientras se mide)
+      const pageRect = el => {
+        let x = 0, y = 0;
+        for (let e = el; e; e = e.offsetParent) { x += e.offsetLeft; y += e.offsetTop; }
+        return { left: x, top: y, width: el.offsetWidth, height: el.offsetHeight };
+      };
+      const knots = [...document.querySelectorAll('[data-knot]')]
+        .map(el => { const r = pageRect(el); const g = knotGeom(Math.max(9, r.width / 2 * 0.95)); return { el, cx: r.left + r.width / 2, cy: r.top + r.height / 2, rad: g.R, base: g.base }; })
+        .filter(k => k.el.offsetWidth > 0).sort((a, b) => a.cy - b.cy);
+      this.knots = knots;
+      const rows = [];
+      knots.forEach(k => { const row = rows[rows.length - 1]; if (row && Math.abs(row[0].cy - k.cy) < 40) row.push(k); else rows.push([k]); });
+
+      // arranque: desde la cola de la «o» del logo baja por el margen derecho;
+      // sin logo, entra por arriba a la izquierda
       if (this.hero) {
         const [ex, ey] = this.hero.point('end');
         const heroBottom = this.hero.el.closest('section').getBoundingClientRect().bottom + scrollY;
-        pts.push([ex, ey], [ex + 30, ey - 50], [Math.min(vw - gx, ex + 120), ey + 120], [vw - gx, heroBottom - 60],
-                 [vw - gx * 1.5, heroBottom + 24], [vw * 0.5, heroBottom + 34], [gx * 1.5, heroBottom + 24], [gx, heroBottom + 90]);
+        pts.push([ex, ey], [ex + 30, ey - 50], [Math.min(vw - gx, ex + 120), ey + 120], [vw - gx, heroBottom - 60]);
+        side = 1;
       } else {
         pts.push([gx, -60], [gx, 120]);
       }
 
-      items.forEach((it, i) => {
-        const { r } = it;
-        if ('knot' in it.el.dataset) {
-          const cx = r.left + r.width / 2, cy = it.y + r.height / 2, rad = Math.max(8, r.width / 2 * 0.95);
-          const prev = pts[pts.length - 1];
-          let fx = cx - prev[0], fy = cy - prev[1]; const len = Math.hypot(fx, fy) || 1; fx /= len; fy /= len;
-          const next = items[i + 1];
-          const row = next && Math.abs(next.y - it.y) < 40;      // nudos en fila (pasos del proceso)
-          if (row || (i && Math.abs(items[i - 1].y - it.y) < 40)) { fx = 1; fy = 0; }
-          pts.push(...loop(cx, cy, rad, fx, fy, 1));
-          // vuelve al margen salvo que el siguiente nudo esté en la misma fila
-          if (!row) {
-            if (it.el.dataset.knot === 'row-end') {
-              // fin de una fila de nudos: baja por la derecha y vuelve al margen por debajo del bloque
-              const block = it.el.closest('.step, section') || it.el;
-              const by = block.getBoundingClientRect().bottom + scrollY;
-              pts.push([vw - gx, by + 20], [vw * 0.5, by + 60], [gx, by + 110]);
-            } else pts.push([gx, cy + 70]);
-          }
+      // en cada fila de nudos el hilo cruza la página en horizontal: entra por el
+      // margen en el que viene, pasa por los nudos y sigue hasta el otro margen,
+      // por el que baja hasta la siguiente fila
+      rows.forEach(row => {
+        const cross = row.length > 1 || row[0].el.closest('.label');
+        if (cross) {
+          const fx = side < 0 ? 1 : -1;                       // sentido del cruce
+          const y = row[0].cy + row[0].base;                  // línea por la que pasa el hilo (bajo los nudos)
+          row.sort((a, b) => (a.cx - b.cx) * fx);
+          const last = pts[pts.length - 1];
+          if (y - last[1] > 120) pts.push([xAt(side), y - 90]); // baja recto por el margen
+          pts.push([xAt(side), y]);
+          row.forEach(k => pts.push(...loop(k.cx, k.cy, k.rad, fx, 0, fx)));
+          pts.push([xAt(-side), y]);
+          side = -side;
         } else {
-          pts.push([r.left - 18, it.y + r.height / 2]);
+          // un nudo solo con texto al lado: el hilo no cruza; baja por el margen
+          // izquierdo, pasa junto al número, le da la vuelta y sigue bajando
+          const k = row[0];
+          if (side > 0) {
+            // viene por la derecha: cruza por el hueco que hay encima del bloque
+            const block = k.el.closest('.step, article, li, figure, .section-head') || k.el;
+            const ty = pageRect(block).top - 24;
+            pts.push([xAt(1), ty - 60], [xAt(1), ty], [vw * 0.5, ty + 6], [xAt(-1), ty]);
+            side = -1;
+          }
+          // si el nudo anterior estaba en la misma vertical, el hilo sigue recto
+          const x = k.cx - k.base, last = pts[pts.length - 1];
+          if (Math.abs(last[0] - x) > 4) pts.push([last[0], k.cy - k.rad * 4 - 40], [x, k.cy - k.rad * 3.2]);
+          pts.push(...loop(k.cx, k.cy, k.rad, 0, 1, 1));
         }
       });
 
       // final: entra en el logo del pie por el inicio de la «n»
       if (this.footer) {
         const [sx, sy] = this.footer.point('start');
-        pts.push([gx, sy - 160], [sx - 40, sy - 70], [sx, sy]);
+        if (side > 0) pts.push([xAt(side), sy - 260], [vw * 0.5, sy - 150], [sx - 30, sy - 70], [sx, sy]);
+        else pts.push([xAt(side), sy - 160], [sx - 40, sy - 70], [sx, sy]);
       } else {
-        pts.push([gx, document.documentElement.scrollHeight + 60]);
+        pts.push([xAt(side), document.documentElement.scrollHeight + 60]);
       }
       this.S = sample(pts, 3);
       // «y» máxima acumulada: así la longitud dibujada crece de forma monótona con el scroll
@@ -358,17 +406,21 @@ window.Yarn = (() => {
       this.el = el; el.classList.add('has-yarn-underline');
       this.canvas = document.createElement('canvas'); this.canvas.className = 'yarn-underline';
       el.appendChild(this.canvas);
-      this.p = 0; this.target = 0; this.S = []; this.w = 0;
+      this.p = 0; this.S = []; this.w = 0;
+      // el enlace de la página actual queda cosido siempre
+      this.keep = el.hasAttribute('aria-current') || 'yarnKeep' in el.dataset;
+      this.target = this.keep ? 1 : 0;
       const host = el.closest('[data-yarn-host]') || el;
       host.addEventListener('pointerenter', () => { this.target = 1; });
-      host.addEventListener('pointerleave', () => { this.target = 0; });
+      host.addEventListener('pointerleave', () => { this.target = this.keep ? 1 : 0; });
       host.addEventListener('focusin', () => { this.target = 1; });
-      host.addEventListener('focusout', () => { this.target = 0; });
+      host.addEventListener('focusout', () => { this.target = this.keep ? 1 : 0; });
+      styleListeners.add(() => { this.dirty = true; });
       tickers.add(dt => this.tick(dt));
     }
     layout() {
       const w = this.el.clientWidth, h = 14;
-      if (w === this.w) return;
+      if (!w || w === this.w) return;
       this.w = w; this.ctx = fitCanvas(this.canvas, w, h);
       const y = 7, pts = [[0, y]];
       for (let x = 24; x < w; x += 34) pts.push([x, y + (pts.length % 2 ? -2.2 : 2.2)]);
@@ -379,6 +431,7 @@ window.Yarn = (() => {
       if (this.p === this.target && !this.dirty) return;
       if (!this.el.isConnected) return;
       this.layout();
+      if (!this.ctx) return;
       const speed = 2.4; // longitud completa por segundo
       this.p = this.target > this.p ? Math.min(this.target, this.p + speed * dt) : Math.max(this.target, this.p - speed * dt * 1.6);
       this.dirty = false;
@@ -390,6 +443,7 @@ window.Yarn = (() => {
 
   /* ---------------- arranque ---------------- */
   function init() {
+    refreshStyle();
     const logos = {};
     document.querySelectorAll('[data-logo]').forEach(el => { logos[el.dataset.logo] = new Logo(el); });
     if (reduced) {

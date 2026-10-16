@@ -11,7 +11,11 @@
   <meta property="og:image" content="assets/img/logo-nudo.png">
   <link rel="icon" type="image/png" href="assets/img/isotipo.png">
   <link rel="preload" href="assets/fonts/DMSans-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=202610161103">
+  <script>
+    // paleta de prueba guardada (ver paleta.js): se aplica antes de pintar
+    try { const v = JSON.parse(localStorage.getItem('nudo-paleta')); if (v) for (const k in v) document.documentElement.style.setProperty(k, v[k]); } catch (e) {}
+  </script>
 </head>
 <body class="">
 
@@ -104,7 +108,8 @@
 <div class="cursor-label" aria-hidden="true">ver <svg class="ast"><use href="#ast"/></svg></div>
 <div class="toast" role="status" aria-live="polite"></div>
 
-<script src="yarn.js"></script>
-<script src="main.js"></script>
+<script src="yarn.js?v=202610161103"></script>
+<script src="main.js?v=202610161103"></script>
+<script src="paleta.js?v=202610161103"></script>
 </body>
 </html>

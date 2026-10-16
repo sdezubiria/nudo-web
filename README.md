@@ -37,9 +37,10 @@ Todo lo que es hilo en la página se dibuja, nunca se estira. Hay un solo trazo 
 - **Logo.** La foto del hilo se revela a lo largo de un trazado dibujado a mano sobre cada letra, en el orden en que se escribiría. Al tocarlo se deshace y se vuelve a dibujar.
 - **Hilo de la página.** Un solo hilo nace en la cola de la «o» del logo, baja por el margen, hace un nudo en cada etiqueta de sección y en los pasos del proceso, y termina dibujando el logo del pie. Se dibuja con el scroll.
 - **Subrayados.** Al pasar el cursor por un enlace, un título de proyecto o un servicio, un hilo corto se dibuja debajo y se recoge al salir.
-- **Nudos.** Son trocoides (el bucle que hace un hilo al avanzar y girar), así que entran y salen con la misma tangente que el resto de la línea.
+- **Nudos.** Son el bucle de una «l» cursiva: el hilo sube, da una vuelta circular alrededor del número o la etiqueta y vuelve a la línea cruzándose consigo mismo. En cada etiqueta de sección el hilo cruza la página de un margen al otro; un nudo suelto con texto al lado (los pasos apilados en móvil) se rodea sin cruzar.
+- **Paleta.** El botón «colores» (abajo a la derecha, `paleta.js`) cambia fondo, tinta y acentos en vivo para decidir la paleta; se guarda en el navegador. Para quitarlo, borrar el archivo y su `<script>` en `src/partials/footer.html`.
 
-Marcado para WordPress: `data-knot` (el hilo hace un nudo alrededor del elemento), `data-pass` (pasa por su borde), `data-yarn-underline` (subrayado al pasar el cursor), `data-logo="hero|footer"`.
+Marcado para WordPress: `data-knot` (el hilo hace un nudo alrededor del elemento), `data-yarn-underline` (subrayado al pasar el cursor), `data-logo="hero|footer"`.
 
 ## Proyectos
 

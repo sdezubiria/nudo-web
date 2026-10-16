@@ -12,6 +12,10 @@
   <link rel="icon" type="image/png" href="assets/img/isotipo.png">
   <link rel="preload" href="assets/fonts/DMSans-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // paleta de prueba guardada (ver paleta.js): se aplica antes de pintar
+    try { const v = JSON.parse(localStorage.getItem('nudo-paleta')); if (v) for (const k in v) document.documentElement.style.setProperty(k, v[k]); } catch (e) {}
+  </script>
 </head>
 <body class="{{class}}">
 
