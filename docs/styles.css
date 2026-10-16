@@ -49,7 +49,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .skip:focus { top: 12px; }
 
 /* ---------- hilo (canvas de yarn.js) ---------- */
-.yarn-thread { position: fixed; inset: 0 auto auto 0; z-index: -1; pointer-events: none; }
+/* por encima del contenido (pasa sobre las imágenes a sangre), por debajo del menú y el visor */
+.yarn-thread { position: fixed; inset: 0 auto auto 0; z-index: 5; pointer-events: none; }
 .has-yarn-underline { position: relative; }
 .yarn-underline { position: absolute; left: 0; bottom: -9px; width: 100%; height: 14px; pointer-events: none; }
 
