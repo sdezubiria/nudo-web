@@ -67,10 +67,18 @@ window.Yarn = (() => {
     };
     if (!pts.length) return S;
     push(pts[0][0], pts[0][1]);
+    // Catmull-Rom centrípeta: con tramos de longitudes muy distintas (la salida
+    // corta de un nudo seguida de una bajada larga) la versión uniforme se pasa
+    // de largo y hace picos; la centrípeta no.
+    const dist = (a, b) => Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1])) || 1e-3;
     for (let i = 0; i < pts.length - 1; i++) {
       const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
-      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      const d1 = dist(p0, p1), d2 = dist(p1, p2), d3 = dist(p2, p3);
+      const a1 = d1 * d1, a2 = d2 * d2, a3 = d3 * d3;
+      const c1x = (a1 * p2[0] - a2 * p0[0] + (2 * a1 + 3 * d1 * d2 + a2) * p1[0]) / (3 * d1 * (d1 + d2));
+      const c1y = (a1 * p2[1] - a2 * p0[1] + (2 * a1 + 3 * d1 * d2 + a2) * p1[1]) / (3 * d1 * (d1 + d2));
+      const c2x = (a3 * p1[0] - a2 * p3[0] + (2 * a3 + 3 * d3 * d2 + a2) * p2[0]) / (3 * d3 * (d3 + d2));
+      const c2y = (a3 * p1[1] - a2 * p3[1] + (2 * a3 + 3 * d3 * d2 + a2) * p2[1]) / (3 * d3 * (d3 + d2));
       const n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 1.3 / step));
       for (let k = 1; k <= n; k++) {
         const t = k / n, m = 1 - t;
