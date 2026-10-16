@@ -60,7 +60,7 @@ window.Yarn = (() => {
 
   // Catmull-Rom → curvas cúbicas → muestras con longitud de arco acumulada
   function sample(pts, step = 3) {
-    const S = [];
+    const S = []; S.marks = [0];
     const push = (x, y) => {
       const p = S[S.length - 1];
       S.push({ x, y, l: p ? p.l + Math.hypot(x - p.x, y - p.y) : 0 });
@@ -85,6 +85,7 @@ window.Yarn = (() => {
         push(m * m * m * p1[0] + 3 * m * m * t * c1x + 3 * m * t * t * c2x + t * t * t * p2[0],
              m * m * m * p1[1] + 3 * m * m * t * c1y + 3 * m * t * t * c2y + t * t * t * p2[1]);
       }
+      S.marks.push(S[S.length - 1].l);
     }
     return S;
   }
@@ -99,44 +100,44 @@ window.Yarn = (() => {
   }
 
   // Nudos. Cada tipo es una lista de puntos en un marco local: u a lo largo
-  // del avance, v hacia el centro del nudo, en radios (R). La línea base está
-  // en v = 0 y el centro del elemento en (0, 1.5). Todos empiezan y terminan
-  // sobre la línea base con tangente horizontal, para unirse sin quiebres.
+  // del avance, v hacia el lado del nudo, en radios (R). La línea base está en
+  // v = 0. El hilo no pasa por debajo del nudo: se hunde un poco, sube por un
+  // cruce que está sobre la misma línea, da la vuelta y vuelve a bajar por ese
+  // cruce, como un bucle en una cuerda tensa. El centro del nudo (donde va el
+  // número) queda en (0, 1.05).
   const rad = d => d * Math.PI / 180;
-  const KNOTS = {
-    // bucle de «l» cursiva: sube, una vuelta circular, baja cruzándose
-    loop() {
-      const L = [[-2.8, 0], [-1.5, 0.02], [-0.65, 0.24], [0, 0.6]];
-      for (let i = 0; i <= 14; i++) { const a = rad(-52 + 284 * i / 14); L.push([Math.cos(a), 1.5 + Math.sin(a)]); }
-      return L.concat([[0, 0.6], [0.65, 0.24], [1.5, 0.02], [2.8, 0]]);
-    },
-    // dos vueltas, la segunda por dentro; sale cruzando las dos
-    coil() {
-      const L = [[-2.8, 0], [-1.5, 0.02], [-0.65, 0.24], [0, 0.6]];
-      for (let i = 0; i <= 32; i++) { const t = i / 32, a = rad(-52 + 644 * t), r = 1 - 0.32 * t; L.push([r * Math.cos(a), 1.5 + r * Math.sin(a)]); }
-      return L.concat([[0.15, 0.5], [0.72, 0.2], [1.5, 0.02], [2.8, 0]]);
-    },
-    // un ocho de pie (lemniscata): dos lóbulos y un cruce en el centro
-    eight() {
-      const L = [[-2.8, 0], [-1.5, 0.02]], a = 1.5;
-      for (let i = 0; i <= 28; i++) { const t = Math.PI + 2 * Math.PI * i / 28, d = 1 + Math.sin(t) ** 2; L.push([1.6 * a * Math.sin(t) * Math.cos(t) / d, a * (Math.cos(t) / d + 1)]); }
-      return L.concat([[1.5, 0.02], [2.8, 0]]);
-    },
-    // un trébol: tres cruces, como un nudo de verdad visto desde arriba
-    twist() {
-      const L = [[-2.8, 0], [-1.5, 0.02]], k = 1.55 / 3;
-      for (let i = 0; i <= 36; i++) { const t = Math.PI + 2 * Math.PI * i / 36; L.push([k * (Math.sin(t) + 2 * Math.sin(2 * t)), k * (Math.cos(t) - 2 * Math.cos(2 * t) + 3)]); }
-      return L.concat([[1.5, 0.02], [2.8, 0]]);
-    },
+  const arc = (from, to, n, r = 0.95, cx = 0, cy = 1.05) => {
+    const L = []; for (let i = 0; i <= n; i++) { const a = rad(from + (to - from) * i / n); L.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } return L;
   };
-  // f = dirección de avance; side elige de qué lado queda la línea base
-  function loop(cx, cy, R, fx, fy, side = 1, type = 'loop') {
+  const IN = [[-2.8, 0], [-1.8, 0], [-1.15, -0.24], [-0.5, -0.3], [0, 0]];
+  const OUT = [[0.5, -0.3], [1.15, -0.24], [1.8, 0], [2.8, 0]];
+  const KNOTS = {
+    // un bucle: cruce sobre la línea, vuelta completa, cruce otra vez
+    loop: () => [...IN, ...arc(-50, 230, 16), ...OUT],
+    // dos vueltas, la segunda por dentro
+    coil: () => [...IN, ...arc(-50, 230, 16), ...arc(230, 590, 20, 0.7), [0, 0], ...OUT],
+    // bucle con la punta pasada por dentro (un nudo simple visto desde arriba)
+    twist: () => [...IN, [0.6, 0.4], [0.98, 1.05], [0.65, 1.78], [-0.1, 2.02], [-0.85, 1.68], [-1.08, 0.98], [-0.72, 0.48], [-0.12, 0.5], [0.5, 0.76], [0.98, 0.52], [1.32, 0.06], [1.9, -0.14], [2.8, 0]],
+    // dos bucles seguidos, el segundo más pequeño
+    pair: () => [...IN, ...arc(-50, 230, 16, 0.8, 0, 0.9), [0, 0], [0.7, -0.26], [1.2, -0.1], [1.5, 0], ...arc(-50, 230, 14, 0.55, 1.5, 0.6).map(([u, v]) => [u, v]), [1.5, 0], [2.0, -0.2], [2.6, -0.1], [3.4, 0]],
+  };
+  // variación por nudo (determinista, según su índice): tamaño, inclinación,
+  // estiramiento y sentido de giro, para que no sean todos iguales
+  function variant(i) {
+    const h = n => { const x = Math.sin((i + 1) * 9301 + n * 49297) * 233280; return x - Math.floor(x); };
+    return { scale: 0.85 + 0.35 * h(1), lean: (h(2) - 0.5) * 0.42, stretch: 0.9 + 0.3 * h(3), flip: h(4) > 0.5 };
+  }
+  // f = dirección de avance; side elige de qué lado queda el nudo
+  function loop(cx, cy, R, fx, fy, side = 1, type = 'loop', vr = { scale: 1, lean: 0, stretch: 1, flip: false }) {
     const nx = -fy * side, ny = fx * side;        // hacia la línea base
-    const px = cx + nx * 1.5 * R, py = cy + ny * 1.5 * R;
-    return (KNOTS[type] || KNOTS.loop)().map(([u, v]) => [px + fx * u * R - nx * v * R, py + fy * u * R - ny * v * R]);
+    let L = (KNOTS[type] || KNOTS.loop)();
+    if (vr.flip) L = L.slice().reverse().map(([u, v]) => [-u, v]);   // gira al revés, entra por el mismo lado
+    L = L.map(([u, v]) => [(u + v * vr.lean) * vr.scale, v * vr.stretch * vr.scale]);
+    const px = cx + nx * 1.05 * R * vr.stretch * vr.scale, py = cy + ny * 1.05 * R * vr.stretch * vr.scale;
+    return L.map(([u, v]) => [px + fx * u * R - nx * v * R, py + fy * u * R - ny * v * R]);
   }
   // radio del bucle y distancia de la línea base al centro, para un elemento
-  const knotGeom = r => { const R = r * 0.9; return { R, base: 1.5 * R }; };
+  const knotGeom = (r, vr) => { const R = r * 0.9; return { R, base: 1.05 * R * vr.stretch * vr.scale }; };
 
   /* ---------------- trazo ---------------- */
 
@@ -325,17 +326,22 @@ window.Yarn = (() => {
         for (let e = el; e; e = e.offsetParent) { x += e.offsetLeft; y += e.offsetTop; }
         return { left: x, top: y, width: el.offsetWidth, height: el.offsetHeight };
       };
+      const seed = [...location.pathname].reduce((a, c) => a + c.charCodeAt(0), 0);
       const knots = [...document.querySelectorAll('[data-knot]')]
-        .map(el => { const r = pageRect(el); const g = knotGeom(Math.max(9, r.width / 2 * 0.95)); return { el, cx: r.left + r.width / 2, cy: r.top + r.height / 2, rad: g.R, base: g.base }; })
+        .map((el, i) => {
+          const r = pageRect(el), vr = variant(seed + i), g = knotGeom(Math.max(10, r.width / 2), vr);
+          return { el, vr, cx: r.left + r.width / 2, cy: r.top + r.height / 2, rad: g.R, base: g.base };
+        })
         .filter(k => k.el.offsetWidth > 0).sort((a, b) => a.cy - b.cy);
       // tipo de nudo: el que diga data-knot, o se van alternando (los nudos con
       // número solo usan los que dejan el centro libre)
       let nl = 0, nn = 0;
       knots.forEach(k => {
         const numbered = !!k.el.querySelector('span');
-        k.type = KNOTS[k.el.dataset.knot] ? k.el.dataset.knot : numbered ? ['loop', 'coil'][nn++ % 2] : ['loop', 'eight', 'coil', 'twist'][nl++ % 4];
+        k.type = KNOTS[k.el.dataset.knot] ? k.el.dataset.knot : numbered ? ['loop', 'coil'][nn++ % 2] : ['loop', 'twist', 'coil', 'pair'][nl++ % 4];
       });
       this.knots = knots;
+      this.ranges = [];   // tramos (en longitud) ocupados por nudos
       const rows = [];
       knots.forEach(k => { const row = rows[rows.length - 1]; if (row && Math.abs(row[0].cy - k.cy) < 40) row.push(k); else rows.push([k]); });
 
@@ -361,8 +367,17 @@ window.Yarn = (() => {
           row.sort((a, b) => (a.cx - b.cx) * fx);
           const last = pts[pts.length - 1];
           if (y - last[1] > 120) pts.push([xAt(side), y - 90]); // baja recto por el margen
+          // puntos intermedios en los tramos largos, para que el cruce vaya recto
+          const across = (xa, xb) => { const n = Math.floor(Math.abs(xb - xa) / 260); for (let i = 1; i <= n; i++) pts.push([xa + (xb - xa) * i / (n + 1), y]); };
           pts.push([xAt(side), y]);
-          row.forEach(k => pts.push(...loop(k.cx, k.cy, k.rad, fx, 0, fx, k.type)));
+          let x = xAt(side);
+          row.forEach(k => {
+            const entry = k.cx - fx * 2.8 * k.rad * k.vr.scale;
+            across(x, entry);
+            k.i0 = pts.length; pts.push(...loop(k.cx, k.cy, k.rad, fx, 0, fx, k.type, k.vr)); k.i1 = pts.length - 1;
+            x = pts[pts.length - 1][0];
+          });
+          across(x, xAt(-side));
           pts.push([xAt(-side), y]);
           side = -side;
         } else {
@@ -379,7 +394,7 @@ window.Yarn = (() => {
           // si el nudo anterior estaba en la misma vertical, el hilo sigue recto
           const x = k.cx - k.base, last = pts[pts.length - 1];
           if (Math.abs(last[0] - x) > 4) pts.push([last[0], k.cy - k.rad * 4 - 40], [x, k.cy - k.rad * 3.2]);
-          pts.push(...loop(k.cx, k.cy, k.rad, 0, 1, 1, k.type));
+          k.i0 = pts.length; pts.push(...loop(k.cx, k.cy, k.rad, 0, 1, 1, k.type, k.vr)); k.i1 = pts.length - 1;
         }
       });
 
@@ -392,6 +407,7 @@ window.Yarn = (() => {
         pts.push([xAt(side), document.documentElement.scrollHeight + 60]);
       }
       this.S = sample(pts, 3);
+      this.ranges = knots.filter(k => k.i0 != null).map(k => [this.S.marks[k.i0], this.S.marks[k.i1]]);
       // «y» máxima acumulada: así la longitud dibujada crece de forma monótona con el scroll
       let m = -Infinity; this.maxY = this.S.map(p => (m = Math.max(m, p.y)));
       this.L = this.S.length ? this.S[this.S.length - 1].l : 0;
@@ -427,8 +443,11 @@ window.Yarn = (() => {
       // página abierta por la mitad) salta hasta la pantalla: siempre hay hilo a la vista
       if (diff > innerHeight * 1.1) { this.drawn = this.target - innerHeight * 0.6; diff = this.target - this.drawn; this.need = true; }
       if (Math.abs(diff) > 0.5) {
-        // se dibuja a una velocidad máxima: si bajas rápido, el hilo te alcanza
-        const step = Math.sign(diff) * Math.min(Math.abs(diff) * 0.12, 3200 * dt);
+        // se dibuja a una velocidad máxima: si bajas rápido, el hilo te alcanza;
+        // dentro de un nudo va mucho más despacio, para verlo formarse
+        const inKnot = (this.ranges || []).some(([a, b]) => this.drawn > a - 20 && this.drawn < b + 20);
+        const vmax = inKnot ? 420 : 1300;
+        const step = Math.sign(diff) * Math.min(Math.abs(diff) * 0.08, vmax * dt);
         this.drawn += Math.abs(step) < 0.5 ? diff : step; this.need = true;
       }
       if (this.footer && this.drawn >= this.L - 1 && !this.footer.done && this.footer.target < 1) this.footer.draw(0.7);
@@ -502,5 +521,5 @@ window.Yarn = (() => {
     return { logos, thread };
   }
 
-  return { init, sample, at, loop, KNOTS, stroke, STYLE, Logo, Thread, Underline, tickers, reduced };
+  return { init, sample, at, loop, KNOTS, variant, stroke, STYLE, Logo, Thread, Underline, tickers, reduced };
 })();
