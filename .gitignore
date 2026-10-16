@@ -1,0 +1,7 @@
+# Material original del cliente (pesado y con accesos privados)
+1_Assets/
+*.zip
+
+# Sistema / editor
+.DS_Store
+.claude/
