@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>El mundo de las setas — nudo</title>
+  <meta name="description" content="El mundo de las setas. Un proyecto de nudo.">
+  <meta name="theme-color" content="#ffdada">
+  <meta property="og:title" content="El mundo de las setas — nudo">
+  <meta property="og:description" content="El mundo de las setas. Un proyecto de nudo.">
+  <meta property="og:image" content="assets/img/logo-nudo.png">
+  <link rel="icon" type="image/png" href="assets/img/isotipo.png">
+  <link rel="preload" href="assets/fonts/DMSans-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="">
+
+<!-- Asterisco de la marca (sale del diagrama de palabras) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="ast" viewBox="-10 -10 20 20">
+    <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none">
+      <line x1="0" y1="-8.5" x2="0" y2="8.5"/>
+      <line x1="-7.4" y1="-4.25" x2="7.4" y2="4.25"/>
+      <line x1="-7.4" y1="4.25" x2="7.4" y2="-4.25"/>
+    </g>
+  </symbol>
+</svg>
+
+<a class="skip" href="#contenido">Saltar al contenido</a>
+
+<header class="site-header">
+  <a class="brand" href="index.html" aria-label="nudo — inicio">
+    <img src="assets/img/logo-nudo-small.png" alt="nudo" width="180" height="63">
+  </a>
+  <nav class="nav" aria-label="Principal">
+    <a href="proyectos.html" aria-current="page" data-yarn-underline>proyectos</a>
+    <a href="sobre-nudo.html" data-yarn-underline>sobre nudo</a>
+    <a href="servicios.html" data-yarn-underline>servicios</a>
+    <a href="contacto.html" data-yarn-underline>contacto</a>
+  </nav>
+  <button class="menu-btn" type="button" aria-expanded="false" aria-controls="menu">
+    <span class="menu-btn-label">menú</span>
+    <span class="menu-btn-knot" aria-hidden="true"></span>
+  </button>
+</header>
+
+<div class="menu" id="menu" hidden>
+  <nav aria-label="Menú móvil">
+    <a href="index.html">inicio</a>
+    <a href="proyectos.html" aria-current="page">proyectos</a>
+    <a href="sobre-nudo.html">sobre nudo</a>
+    <a href="servicios.html">servicios</a>
+    <a href="contacto.html">contacto</a>
+  </nav>
+  <p class="menu-foot"><a href="mailto:nudo.laboratoriocreativo@gmail.com">nudo.laboratoriocreativo@gmail.com</a></p>
+</div>
+
+<main id="contenido">
+  <!-- PLACEHOLDER: este proyecto aparece en la web actual de nudo, pero todavía no tenemos textos ni imágenes. -->
+  <section class="proyecto-head">
+    <p class="label reveal"><span class="knot" data-knot></span>proyecto</p>
+    <h1 class="h1 reveal">El mundo de las setas</h1>
+    <ul class="proyecto-meta reveal">
+      <li><span>qué hicimos</span>por confirmar</li>
+    </ul>
+    <p class="proyecto-intro reveal">Texto pendiente: este proyecto aparece en la web actual de nudo, pero todavía no tenemos sus textos ni sus imágenes.</p>
+  </section>
+
+  <section class="blocks">
+    <div class="ph-block reveal" style="min-height: 50vh">imagen principal pendiente</div>
+    <div class="b-grid reveal" style="--n: 3">
+      <div class="ph-block">imagen pendiente</div>
+      <div class="ph-block">imagen pendiente</div>
+      <div class="ph-block">imagen pendiente</div>
+    </div>
+    <nav class="proyecto-next reveal">
+      <a href="proyecto-carey.html">← Carey</a>
+      <a href="proyectos.html">todos los proyectos →</a>
+    </nav>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="logo footer-logo" data-logo="footer">
+    <img class="logo-fallback" src="assets/img/logo-nudo.png" alt="nudo" width="1600" height="757" loading="lazy">
+  </div>
+  <div class="footer-row">
+    <p>© 2026 nudo · laboratorio de creación editorial</p>
+    <nav aria-label="Pie">
+      <a href="proyectos.html">proyectos</a>
+      <a href="sobre-nudo.html">sobre nudo</a>
+      <a href="servicios.html">servicios</a>
+      <a href="contacto.html">contacto</a>
+      <a href="https://www.instagram.com/nudo.laboratorio/" target="_blank" rel="noopener">instagram ↗</a>
+    </nav>
+  </div>
+</footer>
+
+<!-- Visor de imágenes -->
+<dialog class="lightbox" id="lightbox" aria-label="Imagen ampliada">
+  <button class="lb-close" type="button" aria-label="Cerrar">cerrar <span aria-hidden="true">×</span></button>
+  <figure class="lb-fig"></figure>
+  <div class="lb-foot">
+    <button class="lb-prev" type="button" aria-label="Imagen anterior">←</button>
+    <span class="lb-count" aria-live="polite"></span>
+    <button class="lb-next" type="button" aria-label="Imagen siguiente">→</button>
+  </div>
+</dialog>
+
+<div class="cursor-label" aria-hidden="true">ver <svg class="ast"><use href="#ast"/></svg></div>
+<div class="toast" role="status" aria-live="polite"></div>
+
+<script src="yarn.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

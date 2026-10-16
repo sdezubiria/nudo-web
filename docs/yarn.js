@@ -1,0 +1,408 @@
+/* =========================================================
+   yarn.js — sistema de hilo de nudo
+
+   La idea: el hilo nunca "rebota" ni se estira; se DIBUJA. Todo lo que
+   es hilo en la página se genera desde una misma línea, con el mismo
+   trazo (una base y las hebras torcidas encima) y la misma animación:
+   la longitud dibujada crece como si alguien fuera soltando el hilo.
+
+   Piezas:
+   - Yarn.logo(el)       el logo (foto real de hilo) se revela a lo largo
+                         de su trazado, letra por letra, con una máscara SVG.
+   - Yarn.thread()       un solo hilo recorre la página: nace en la cola de
+                         la «o» del logo, baja por el margen, hace un nudo en
+                         cada etiqueta de sección y en los pasos del proceso,
+                         y termina dibujando el logo del pie. Se dibuja con el
+                         scroll.
+   - Yarn.underline(el)  un hilo corto que se dibuja bajo un elemento al
+                         pasar el cursor y se recoge al salir.
+   - Yarn.loop()         la geometría de un nudo (una trocoide: el bucle que
+                         hace un hilo cuando avanza y gira sobre sí mismo),
+                         continua con el resto de la línea.
+
+   Marcado:
+   - [data-knot]          el hilo hace un nudo alrededor del elemento
+   - [data-pass="left"]   el hilo pasa por el borde izquierdo del elemento
+   - [data-yarn-underline] subrayado de hilo al pasar el cursor; si tiene un
+                          ancestro [data-yarn-host], ese es el que escucha el hover
+   - [data-logo="hero|footer"] logo revelado como hilo
+   ========================================================= */
+window.Yarn = (() => {
+  'use strict';
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const DPR = () => Math.min(devicePixelRatio || 1, 2);
+
+  // Trazo: base en vino y hebras claras cruzadas en diagonal (la torsión del hilo)
+  const STYLE = { color: '#701d3b', ply: 'rgba(255, 218, 218, .72)', width: 3, plyGap: 4.6, plyAngle: 1.05 };
+
+  /* ---------------- geometría ---------------- */
+
+  // Catmull-Rom → curvas cúbicas → muestras con longitud de arco acumulada
+  function sample(pts, step = 3) {
+    const S = [];
+    const push = (x, y) => {
+      const p = S[S.length - 1];
+      S.push({ x, y, l: p ? p.l + Math.hypot(x - p.x, y - p.y) : 0 });
+    };
+    if (!pts.length) return S;
+    push(pts[0][0], pts[0][1]);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      const n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 1.3 / step));
+      for (let k = 1; k <= n; k++) {
+        const t = k / n, m = 1 - t;
+        push(m * m * m * p1[0] + 3 * m * m * t * c1x + 3 * m * t * t * c2x + t * t * t * p2[0],
+             m * m * m * p1[1] + 3 * m * m * t * c1y + 3 * m * t * t * c2y + t * t * t * p2[1]);
+      }
+    }
+    return S;
+  }
+
+  // punto y tangente a una longitud de arco dada
+  function at(S, l) {
+    let lo = 0, hi = S.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (S[mid].l < l) lo = mid + 1; else hi = mid; }
+    const b = S[lo], a = S[Math.max(0, lo - 1)];
+    const t = b.l === a.l ? 0 : clamp((l - a.l) / (b.l - a.l), 0, 1);
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, ang: Math.atan2(b.y - a.y, b.x - a.x) };
+  }
+
+  // Nudo: trocoide centrada en (cx, cy) de radio r. f = dirección de avance.
+  // El hilo pasa por un lado del centro y da la vuelta por el otro; entra y
+  // sale con la misma tangente, así que se une sin quiebres a lo que venga.
+  function loop(cx, cy, r, fx, fy, side = 1, n = 40) {
+    const nx = -fy * side, ny = fx * side, a = r * 0.32, pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = -Math.PI + 2 * Math.PI * i / n;
+      const u = a * t - r * Math.sin(t), v = -r * Math.cos(t);
+      pts.push([cx + fx * u + nx * v, cy + fy * u + ny * v]);
+    }
+    return pts;
+  }
+
+  /* ---------------- trazo ---------------- */
+
+  // dibuja el tramo [from, to] de las muestras S en un contexto 2D.
+  // view (opcional): {top, bottom} en el mismo sistema de coordenadas, para no
+  // dibujar hebras fuera de la pantalla.
+  function stroke(ctx, S, from, to, st = STYLE, view) {
+    if (!S.length || to <= from) return;
+    to = Math.min(to, S[S.length - 1].l);
+    const a = at(S, from), b = at(S, to);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = st.color; ctx.lineWidth = st.width;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y);
+    for (let i = 0; i < S.length; i++) {
+      const p = S[i];
+      if (p.l <= from) continue;
+      if (p.l >= to) break;
+      if (view && (p.y < view.top - 40 || p.y > view.bottom + 40)) { ctx.moveTo(p.x, p.y); continue; }
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.lineTo(b.x, b.y); ctx.stroke();
+
+    // hebras: trazos cortos cruzando la base en diagonal, a paso regular
+    ctx.strokeStyle = st.ply; ctx.lineWidth = Math.max(1, st.width * 0.42);
+    const half = st.width * 0.55;
+    ctx.beginPath();
+    for (let l = Math.ceil(from / st.plyGap) * st.plyGap + st.plyGap * 0.5; l < to - 1; l += st.plyGap) {
+      const p = at(S, l);
+      if (view && (p.y < view.top - 10 || p.y > view.bottom + 10)) continue;
+      const c = Math.cos(p.ang + st.plyAngle) * half, s = Math.sin(p.ang + st.plyAngle) * half;
+      ctx.moveTo(p.x - c, p.y - s); ctx.lineTo(p.x + c, p.y + s);
+    }
+    ctx.stroke();
+  }
+
+  function fitCanvas(canvas, w, h) {
+    const d = DPR();
+    canvas.width = Math.max(1, Math.round(w * d)); canvas.height = Math.max(1, Math.round(h * d));
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    const ctx = canvas.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); return ctx;
+  }
+
+  /* ---------------- animación compartida ---------------- */
+  const tickers = new Set();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    for (const fn of tickers) fn(dt, now / 1000);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* =========================================================
+     LOGO — la foto de hilo se revela por su trazado
+     Puntos (en el sistema 1600×757 de logo-nudo.png) trazados a mano
+     siguiendo el centro de cada letra, en el orden en que se escribiría.
+     ========================================================= */
+  const LOGO = {
+    w: 1600, h: 757, mask: 92,
+    letters: [
+      [[192,265],[195,340],[199,420],[204,500],[212,545],[238,540],[236,500],[224,462],[217,415],[216,365],[224,325],[252,300],[292,292],[332,308],[361,346],[373,400],[377,470],[379,530],[383,572]],
+      [[503,292],[507,360],[512,430],[522,490],[545,530],[580,555],[615,562],[650,545],[675,505],[685,450],[686,390],[683,340],[678,310],[668,292],[656,300],[660,318],[676,335],[684,370],[686,430],[682,480],[666,520],[640,545],[605,552],[570,540],[545,510],[530,460],[522,400],[520,340],[521,300]],
+      [[995,205],[1002,270],[1010,330],[960,310],[905,312],[850,340],[815,400],[812,470],[840,530],[900,548],[960,545],[1000,525],[1030,540],[1045,520],[1040,490],[1030,460],[1035,400],[1033,340],[1030,280],[1030,220],[1032,190]],
+      [[1215,315],[1300,312],[1380,350],[1408,435],[1385,520],[1300,562],[1215,545],[1160,470],[1165,380],[1210,318],[1290,322],[1370,360],[1398,435],[1375,515],[1295,552],[1225,535],[1175,470],[1180,385],[1225,330]],
+    ],
+  };
+  function toPath(pts) {
+    let d = `M ${pts[0][0]} ${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      d += ` C ${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(1)} ${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(1)} ${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(1)} ${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(1)} ${p2[0]} ${p2[1]}`;
+    }
+    return d;
+  }
+  const NS = 'http://www.w3.org/2000/svg';
+  const svgEl = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; };
+
+  class Logo {
+    constructor(el) {
+      this.el = el;
+      this.img = el.querySelector('img');
+      this.canvas = document.createElement('canvas'); this.canvas.className = 'logo-canvas';
+      el.appendChild(this.canvas);
+      // una ruta por letra (el canvas reinicia el guion en cada «M»), con su
+      // longitud y su posición dentro del trazado total: así se escriben en orden
+      let off = 0;
+      this.letters = LOGO.letters.map(pts => {
+        const d = toPath(pts), L = svgEl('path', { d }).getTotalLength();
+        const l = { path: new Path2D(d), L, off }; off += L; return l;
+      });
+      this.L = off;
+      this.p = 0; this.target = 0; this.speed = 0.55; // fracción por segundo
+      this.done = false; this.onDone = null; this.ready = false;
+      const go = () => { this.ready = true; el.classList.add('is-yarn'); this.resize(); };
+      this.img.complete && this.img.naturalWidth ? go() : this.img.addEventListener('load', go);
+      new ResizeObserver(() => this.resize()).observe(el);
+      tickers.add(dt => this.tick(dt));
+      // un toque deshace el hilo y lo vuelve a dibujar
+      el.addEventListener('click', () => this.redraw());
+    }
+    resize() {
+      const r = this.el.getBoundingClientRect();
+      if (!r.width) return;
+      this.w = r.width; this.h = r.height; this.ctx = fitCanvas(this.canvas, r.width, r.height);
+      this.pattern = this.ctx.createPattern(this.img, 'no-repeat');
+      this.render();
+    }
+    set(p) { this.p = p; this.render(); }
+    render() {
+      if (!this.ready || !this.ctx) return;
+      const ctx = this.ctx, k = this.w / LOGO.w;
+      ctx.clearRect(0, 0, this.w, this.h);
+      if (this.p <= 0) return;
+      ctx.save(); ctx.scale(k, k);
+      // la foto del hilo solo se ve dentro del trazo: el trazo se dibuja con la foto como patrón
+      ctx.lineWidth = LOGO.mask; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = this.pattern;
+      const drawn = this.L * this.p;
+      for (const l of this.letters) {
+        const d = clamp(drawn - l.off, 0, l.L);
+        if (d <= 0) break;
+        ctx.setLineDash([d, l.L + 10]);
+        ctx.stroke(l.path);
+      }
+      ctx.restore();
+    }
+    tick(dt = 1 / 60) {
+      if (Math.abs(this.target - this.p) < 0.002) {
+        if (this.p !== this.target) this.set(this.target);
+        if (this.p >= 1 && !this.done) { this.done = true; this.onDone && this.onDone(); }
+        return;
+      }
+      const dir = Math.sign(this.target - this.p);
+      this.set(clamp(this.p + dir * this.speed * dt, 0, 1));
+    }
+    draw(speed = 0.55) { this.speed = speed; this.target = 1; }
+    redraw() { if (this.target < 1 || this.p < 1) return; this.speed = 2.2; this.target = 0; this.done = false; setTimeout(() => this.draw(0.8), 700); }
+    // punto del trazado (inicio o fin) en coordenadas de la página
+    point(where) {
+      const r = this.el.getBoundingClientRect(), k = r.width / LOGO.w;
+      const pts = LOGO.letters[where === 'start' ? 0 : LOGO.letters.length - 1];
+      const p = where === 'start' ? pts[0] : pts[pts.length - 1];
+      return [r.left + p[0] * k, r.top + scrollY + p[1] * k];
+    }
+  }
+
+  /* =========================================================
+     HILO DE LA PÁGINA
+     ========================================================= */
+  class Thread {
+    constructor(opts = {}) {
+      this.hero = opts.hero || null;     // Logo del inicio (el hilo nace de su «o»)
+      this.footer = opts.footer || null; // Logo del pie (el hilo termina dibujándolo)
+      this.canvas = document.createElement('canvas');
+      this.canvas.className = 'yarn-thread';
+      document.body.appendChild(this.canvas);
+      this.S = []; this.drawn = 0; this.target = 0; this.need = true;
+      this.build();
+      let t; addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => this.build(), 150); });
+      // el contenido cambia de alto cuando cargan imágenes y fuentes
+      new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => this.build(), 150); }).observe(document.body);
+      addEventListener('scroll', () => { this.need = true; }, { passive: true });
+      tickers.add(dt => this.tick(dt));
+    }
+
+    gutter() {
+      const sec = document.querySelector('main > section');
+      if (!sec) return 24;
+      const r = sec.getBoundingClientRect();
+      return r.left + parseFloat(getComputedStyle(sec).paddingLeft) / 2;
+    }
+
+    build() {
+      const vw = document.documentElement.clientWidth;
+      const gx = this.gutter();
+      const pts = [];
+      const items = [...document.querySelectorAll('[data-knot], [data-pass]')]
+        .map(el => { const r = el.getBoundingClientRect(); return { el, r, y: r.top + scrollY, x: r.left }; })
+        .filter(i => i.r.width > 0)
+        .sort((a, b) => a.y - b.y);
+
+      // arranque: desde la cola de la «o» del logo baja por el margen derecho
+      // y cruza al izquierdo justo debajo del inicio; si no hay logo, entra por arriba
+      if (this.hero) {
+        const [ex, ey] = this.hero.point('end');
+        const heroBottom = this.hero.el.closest('section').getBoundingClientRect().bottom + scrollY;
+        pts.push([ex, ey], [ex + 30, ey - 50], [Math.min(vw - gx, ex + 120), ey + 120], [vw - gx, heroBottom - 60],
+                 [vw - gx * 1.5, heroBottom + 24], [vw * 0.5, heroBottom + 34], [gx * 1.5, heroBottom + 24], [gx, heroBottom + 90]);
+      } else {
+        pts.push([gx, -60], [gx, 120]);
+      }
+
+      items.forEach((it, i) => {
+        const { r } = it;
+        if ('knot' in it.el.dataset) {
+          const cx = r.left + r.width / 2, cy = it.y + r.height / 2, rad = Math.max(8, r.width / 2 * 0.95);
+          const prev = pts[pts.length - 1];
+          let fx = cx - prev[0], fy = cy - prev[1]; const len = Math.hypot(fx, fy) || 1; fx /= len; fy /= len;
+          const next = items[i + 1];
+          const row = next && Math.abs(next.y - it.y) < 40;      // nudos en fila (pasos del proceso)
+          if (row || (i && Math.abs(items[i - 1].y - it.y) < 40)) { fx = 1; fy = 0; }
+          pts.push(...loop(cx, cy, rad, fx, fy, 1));
+          // vuelve al margen salvo que el siguiente nudo esté en la misma fila
+          if (!row) {
+            if (it.el.dataset.knot === 'row-end') {
+              // fin de una fila de nudos: baja por la derecha y vuelve al margen por debajo del bloque
+              const block = it.el.closest('.step, section') || it.el;
+              const by = block.getBoundingClientRect().bottom + scrollY;
+              pts.push([vw - gx, by + 20], [vw * 0.5, by + 60], [gx, by + 110]);
+            } else pts.push([gx, cy + 70]);
+          }
+        } else {
+          pts.push([r.left - 18, it.y + r.height / 2]);
+        }
+      });
+
+      // final: entra en el logo del pie por el inicio de la «n»
+      if (this.footer) {
+        const [sx, sy] = this.footer.point('start');
+        pts.push([gx, sy - 160], [sx - 40, sy - 70], [sx, sy]);
+      } else {
+        pts.push([gx, document.documentElement.scrollHeight + 60]);
+      }
+      this.S = sample(pts, 3);
+      // «y» máxima acumulada: así la longitud dibujada crece de forma monótona con el scroll
+      let m = -Infinity; this.maxY = this.S.map(p => (m = Math.max(m, p.y)));
+      this.L = this.S.length ? this.S[this.S.length - 1].l : 0;
+      this.need = true;
+      this.resize();
+    }
+
+    resize() {
+      const w = document.documentElement.clientWidth, h = innerHeight;
+      if (this.w !== w || this.h !== h) { this.w = w; this.h = h; this.ctx = fitCanvas(this.canvas, w, h); }
+    }
+
+    lengthAtY(y) {
+      let lo = 0, hi = this.maxY.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (this.maxY[mid] < y) lo = mid + 1; else hi = mid; }
+      return this.S[lo] ? this.S[lo].l : 0;
+    }
+
+    tick(dt) {
+      if (!this.S.length) return;
+      // objetivo: la punta del hilo va un poco por debajo del centro de la pantalla
+      let target = this.lengthAtY(scrollY + innerHeight * 0.72);
+      if (this.hero && !this.hero.done) target = 0;
+      if (scrollY + innerHeight >= document.documentElement.scrollHeight - 4) target = this.L;
+      if (reduced) target = this.L;
+      this.target = target;
+      const diff = this.target - this.drawn;
+      if (Math.abs(diff) > 0.5) {
+        // se dibuja a una velocidad máxima: si bajas rápido, el hilo te alcanza
+        const step = Math.sign(diff) * Math.min(Math.abs(diff) * 0.12, 2600 * dt);
+        this.drawn += Math.abs(step) < 0.5 ? diff : step; this.need = true;
+      }
+      if (this.footer && this.drawn >= this.L - 1 && !this.footer.done && this.footer.target < 1) this.footer.draw(0.7);
+      if (!this.need) return; this.need = false;
+      this.resize();
+      const ctx = this.ctx, top = scrollY;
+      ctx.clearRect(0, 0, this.w, this.h);
+      ctx.save(); ctx.translate(0, -top);
+      stroke(ctx, this.S, 0, this.drawn, STYLE, { top, bottom: top + this.h });
+      ctx.restore();
+    }
+  }
+
+  /* =========================================================
+     SUBRAYADO DE HILO (hover)
+     ========================================================= */
+  class Underline {
+    constructor(el) {
+      this.el = el; el.classList.add('has-yarn-underline');
+      this.canvas = document.createElement('canvas'); this.canvas.className = 'yarn-underline';
+      el.appendChild(this.canvas);
+      this.p = 0; this.target = 0; this.S = []; this.w = 0;
+      const host = el.closest('[data-yarn-host]') || el;
+      host.addEventListener('pointerenter', () => { this.target = 1; });
+      host.addEventListener('pointerleave', () => { this.target = 0; });
+      host.addEventListener('focusin', () => { this.target = 1; });
+      host.addEventListener('focusout', () => { this.target = 0; });
+      tickers.add(dt => this.tick(dt));
+    }
+    layout() {
+      const w = this.el.clientWidth, h = 14;
+      if (w === this.w) return;
+      this.w = w; this.ctx = fitCanvas(this.canvas, w, h);
+      const y = 7, pts = [[0, y]];
+      for (let x = 24; x < w; x += 34) pts.push([x, y + (pts.length % 2 ? -2.2 : 2.2)]);
+      pts.push([w, y]);
+      this.S = sample(pts, 2); this.L = this.S[this.S.length - 1].l; this.dirty = true;
+    }
+    tick(dt) {
+      if (this.p === this.target && !this.dirty) return;
+      if (!this.el.isConnected) return;
+      this.layout();
+      const speed = 2.4; // longitud completa por segundo
+      this.p = this.target > this.p ? Math.min(this.target, this.p + speed * dt) : Math.max(this.target, this.p - speed * dt * 1.6);
+      this.dirty = false;
+      this.ctx.clearRect(0, 0, this.w, 14);
+      // al recogerse, el hilo se va por donde entró (se acorta desde el final)
+      stroke(this.ctx, this.S, 0, this.L * this.p, { ...STYLE, width: 2.2, plyGap: 3.6 });
+    }
+  }
+
+  /* ---------------- arranque ---------------- */
+  function init() {
+    const logos = {};
+    document.querySelectorAll('[data-logo]').forEach(el => { logos[el.dataset.logo] = new Logo(el); });
+    if (reduced) {
+      Object.values(logos).forEach(l => { l.set(1); l.done = true; l.target = 1; });
+    } else {
+      if (logos.hero) logos.hero.draw(0.5);
+      if (logos.footer && !document.querySelector('.yarn-thread')) logos.footer.draw();
+    }
+    const thread = new Thread({ hero: logos.hero, footer: logos.footer });
+    if (reduced) { thread.drawn = thread.L; if (logos.footer) logos.footer.set(1); }
+    document.querySelectorAll('[data-yarn-underline]').forEach(el => new Underline(el));
+    return { logos, thread };
+  }
+
+  return { init, sample, at, loop, stroke, STYLE, Logo, Thread, Underline, tickers, reduced };
+})();

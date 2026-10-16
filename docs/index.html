@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>nudo — laboratorio de creación editorial</title>
+  <meta name="description" content="Nudo es un laboratorio de creación editorial que conecta edición, diseño, materialidad y narración. Publicaciones, objetos editoriales, identidades visuales, ilustración, asesorías y talleres.">
+  <meta name="theme-color" content="#ffdada">
+  <meta property="og:title" content="nudo — laboratorio de creación editorial">
+  <meta property="og:description" content="Nudo es un laboratorio de creación editorial que conecta edición, diseño, materialidad y narración. Publicaciones, objetos editoriales, identidades visuales, ilustración, asesorías y talleres.">
+  <meta property="og:image" content="assets/img/logo-nudo.png">
+  <link rel="icon" type="image/png" href="assets/img/isotipo.png">
+  <link rel="preload" href="assets/fonts/DMSans-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="home">
+
+<!-- Asterisco de la marca (sale del diagrama de palabras) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="ast" viewBox="-10 -10 20 20">
+    <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none">
+      <line x1="0" y1="-8.5" x2="0" y2="8.5"/>
+      <line x1="-7.4" y1="-4.25" x2="7.4" y2="4.25"/>
+      <line x1="-7.4" y1="4.25" x2="7.4" y2="-4.25"/>
+    </g>
+  </symbol>
+</svg>
+
+<a class="skip" href="#contenido">Saltar al contenido</a>
+
+<header class="site-header">
+  <a class="brand" href="index.html" aria-label="nudo — inicio">
+    <img src="assets/img/logo-nudo-small.png" alt="nudo" width="180" height="63">
+  </a>
+  <nav class="nav" aria-label="Principal">
+    <a href="proyectos.html" data-yarn-underline>proyectos</a>
+    <a href="sobre-nudo.html" data-yarn-underline>sobre nudo</a>
+    <a href="servicios.html" data-yarn-underline>servicios</a>
+    <a href="contacto.html" data-yarn-underline>contacto</a>
+  </nav>
+  <button class="menu-btn" type="button" aria-expanded="false" aria-controls="menu">
+    <span class="menu-btn-label">menú</span>
+    <span class="menu-btn-knot" aria-hidden="true"></span>
+  </button>
+</header>
+
+<div class="menu" id="menu" hidden>
+  <nav aria-label="Menú móvil">
+    <a href="index.html" aria-current="page">inicio</a>
+    <a href="proyectos.html">proyectos</a>
+    <a href="sobre-nudo.html">sobre nudo</a>
+    <a href="servicios.html">servicios</a>
+    <a href="contacto.html">contacto</a>
+  </nav>
+  <p class="menu-foot"><a href="mailto:nudo.laboratoriocreativo@gmail.com">nudo.laboratoriocreativo@gmail.com</a></p>
+</div>
+
+<main id="contenido">
+  <section class="hero">
+    <h1 class="sr-only">nudo — laboratorio de creación editorial</h1>
+
+    <div class="logo hero-logo" data-logo="hero" title="toca para volver a dibujar">
+      <img class="logo-fallback" src="assets/img/logo-nudo.png" alt="nudo" width="1600" height="757">
+    </div>
+
+    <p class="hero-kicker">
+      <svg class="ast spin" aria-hidden="true"><use href="#ast"/></svg>
+      laboratorio de creación editorial
+      <svg class="ast spin rev" aria-hidden="true"><use href="#ast"/></svg>
+    </p>
+
+    <div class="hero-foot">
+      <p class="hero-intro">
+        Conectamos edición, diseño, materialidad y narración en distintos procesos creativos.
+        Creamos publicaciones, objetos editoriales, identidades visuales, ilustraciones y otras
+        piezas gráficas, y ofrecemos asesorías y talleres.
+      </p>
+      <p class="hero-links">
+        <a href="proyectos.html" data-yarn-underline>ver proyectos</a>
+        <a href="contacto.html" data-yarn-underline>escríbenos</a>
+      </p>
+    </div>
+  </section>
+
+  <section class="sobre">
+    <p class="label reveal"><span class="knot" data-knot></span>sobre nudo</p>
+    <p class="statement reveal">
+      Nudo es un espacio para explorar las posibilidades de la creación editorial.
+      <svg class="ast ast-inline spin" aria-hidden="true"><use href="#ast"/></svg>
+      Nos interesa lo que ocurre entre una idea y su forma; las <span class="sq sq-lila">palabras</span>,
+      las <span class="sq sq-naranja">imágenes</span>, los <span class="sq sq-verde">materiales</span>,
+      las decisiones gráficas y las maneras de narrar.
+    </p>
+    <p class="reveal"><a class="more" href="sobre-nudo.html">más sobre nudo</a></p>
+  </section>
+
+  <section class="proyectos">
+    <div class="section-head row">
+      <div>
+        <p class="label reveal"><span class="knot" data-knot></span>proyectos</p>
+        <h2 class="h2 reveal">Publicaciones, objetos, ilustraciones y otras formas de narrar.</h2>
+      </div>
+      <a class="more reveal" href="proyectos.html">todos los proyectos</a>
+    </div>
+
+    <div class="proyectos-grid featured">
+      <article class="card reveal" style="--c: var(--lila)">
+        <a href="proyecto-b23.html">
+          <span class="card-media cutout"><img src="assets/img/proyectos/b23-01.webp" alt="Portada de la revista B23" loading="lazy"></span>
+          <span class="card-info"><h3 data-yarn-underline>B23</h3><span class="tags">revista · edición · diseño</span></span>
+        </a>
+      </article>
+      <article class="card reveal" style="--c: var(--verde)">
+        <a href="proyecto-ocupar-espacio.html">
+          <span class="card-media photo"><img src="assets/img/proyectos/ocupar-03.webp" alt="Publicación con diapositivas de Ocupar espacio" loading="lazy"></span>
+          <span class="card-info"><h3 data-yarn-underline>Ocupar espacio</h3><span class="tags">publicaciones · materialidad</span></span>
+        </a>
+      </article>
+      <article class="card reveal" style="--c: var(--naranja)">
+        <a href="proyecto-nams.html">
+          <span class="card-media cutout"><img src="assets/img/proyectos/nams-10.webp" alt="Ñams, el personaje del libro" loading="lazy"></span>
+          <span class="card-info"><h3 data-yarn-underline>El mundo de Ñams</h3><span class="tags">libro ilustrado · personajes</span></span>
+        </a>
+      </article>
+    </div>
+  </section>
+
+  <section class="servicios-resumen">
+    <div class="section-head row">
+      <div>
+        <p class="label reveal"><span class="knot" data-knot></span>servicios</p>
+        <h2 class="h2 reveal">Lo que hacemos.</h2>
+      </div>
+      <a class="more reveal" href="servicios.html">cómo trabajamos</a>
+    </div>
+    <ul class="serv-summary">
+      <li class="reveal"><strong>Edición</strong><p>libros, textos, publicaciones, corrección de estilo, desarrollo editorial</p></li>
+      <li class="reveal"><strong>Diseño</strong><p>libros, revistas, publicaciones físicas y digitales, identidad gráfica, ilustración</p></li>
+      <li class="reveal"><strong>Asesorías</strong><p>autores, estudiantes, editoriales, organizaciones, proyectos culturales</p></li>
+      <li class="reveal"><strong>Experiencias</strong><p>talleres, laboratorios creativos, prácticas de edición, exploración de materiales</p></li>
+    </ul>
+  </section>
+
+  <section class="contacto">
+    <p class="label reveal"><span class="knot" data-knot></span>contacto</p>
+    <h2 class="contact-title reveal">¿hacemos algo junt<span class="ast-letter"><svg class="ast" aria-hidden="true"><use href="#ast"/></svg><span class="sr-only">*</span></span>s?</h2>
+    <p class="contact-lead reveal">¿Tienes una idea en mente? Nos encantaría conocerla.</p>
+    <div class="contact-row reveal">
+      <a class="mail" href="mailto:nudo.laboratoriocreativo@gmail.com">nudo.laboratoriocreativo@gmail.com</a>
+      <a class="btn" href="contacto.html">contacto</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="logo footer-logo" data-logo="footer">
+    <img class="logo-fallback" src="assets/img/logo-nudo.png" alt="nudo" width="1600" height="757" loading="lazy">
+  </div>
+  <div class="footer-row">
+    <p>© 2026 nudo · laboratorio de creación editorial</p>
+    <nav aria-label="Pie">
+      <a href="proyectos.html">proyectos</a>
+      <a href="sobre-nudo.html">sobre nudo</a>
+      <a href="servicios.html">servicios</a>
+      <a href="contacto.html">contacto</a>
+      <a href="https://www.instagram.com/nudo.laboratorio/" target="_blank" rel="noopener">instagram ↗</a>
+    </nav>
+  </div>
+</footer>
+
+<!-- Visor de imágenes -->
+<dialog class="lightbox" id="lightbox" aria-label="Imagen ampliada">
+  <button class="lb-close" type="button" aria-label="Cerrar">cerrar <span aria-hidden="true">×</span></button>
+  <figure class="lb-fig"></figure>
+  <div class="lb-foot">
+    <button class="lb-prev" type="button" aria-label="Imagen anterior">←</button>
+    <span class="lb-count" aria-live="polite"></span>
+    <button class="lb-next" type="button" aria-label="Imagen siguiente">→</button>
+  </div>
+</dialog>
+
+<div class="cursor-label" aria-hidden="true">ver <svg class="ast"><use href="#ast"/></svg></div>
+<div class="toast" role="status" aria-live="polite"></div>
+
+<script src="yarn.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
