@@ -174,24 +174,9 @@ section { padding: clamp(64px, 9vw, 140px) var(--gutter); max-width: var(--max);
   text-wrap: pretty;
 }
 .ast-inline { width: .55em; height: .55em; vertical-align: .05em; margin: 0 .08em; }
-.sq { white-space: nowrap; --c: var(--lila); }
-.sq-lila { --c: var(--lila); } .sq-naranja { --c: var(--naranja); } .sq-verde { --c: var(--verde); }
-.sq .ch { position: relative; }
-.sq .ch::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: -.1em; height: .13em;
-  background: var(--c);
-  -webkit-mask: var(--wave) calc(-1 * var(--x, 0px)) 0 / .26em .13em repeat-x;
-  mask: var(--wave) calc(-1 * var(--x, 0px)) 0 / .26em .13em repeat-x;
-  transform-origin: left; transform: scaleX(1);
-}
-.sq:hover .ch::after { animation: stitch 1.3s calc(var(--i) * 55ms) both; }
-@keyframes stitch {
-  0% { transform: scaleX(1); transform-origin: right; }
-  22% { transform: scaleX(0); transform-origin: right; }
-  50% { transform: scaleX(0); transform-origin: left; }
-  78% { transform: scaleX(1); transform-origin: left; }
-  100% { transform: scaleX(1); transform-origin: left; }
-}
+/* palabras cosidas: llevan un hilo de su color (yarn.js, data-color) */
+.sq { white-space: nowrap; }
+.sq .yarn-underline { bottom: -.22em; }
 
 /* ---------- sobre nudo ---------- */
 .sobre-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 96px); align-items: center; }

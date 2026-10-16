@@ -34,28 +34,6 @@
   }, { threshold: 0.1, rootMargin: '0px 0px -30px 0px' });
   document.querySelectorAll('.reveal').forEach(el => revealIO.observe(el));
 
-  /* ---------------- palabras cosidas (.sq) ----------------
-     Se parte la palabra en letras; cada letra lleva su tramo de subrayado
-     ondulado, con la fase alineada (--x) para que la onda sea continua.
-     Al pasar el cursor, los tramos se descosen uno a uno y se vuelven a coser. */
-  document.querySelectorAll('.sq').forEach(w => {
-    const text = w.textContent;
-    w.textContent = '';
-    [...text].forEach((ch, i) => {
-      const s = document.createElement('span');
-      s.className = 'ch'; s.style.setProperty('--i', i); s.textContent = ch;
-      w.appendChild(s);
-    });
-  });
-  function phaseWords() {
-    document.querySelectorAll('.sq').forEach(w => {
-      const x0 = w.getBoundingClientRect().left;
-      w.querySelectorAll('.ch').forEach(s => s.style.setProperty('--x', `${(s.getBoundingClientRect().left - x0).toFixed(1)}px`));
-    });
-  }
-  (document.fonts ? document.fonts.ready : Promise.resolve()).then(phaseWords);
-  addEventListener('resize', phaseWords);
-
   /* ---------------- tarjetas de proyecto ---------------- */
   const cursorLabel = document.querySelector('.cursor-label');
   document.querySelectorAll('.card').forEach(card => {

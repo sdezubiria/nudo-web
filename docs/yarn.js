@@ -90,6 +90,69 @@ window.Yarn = (() => {
     return S;
   }
 
+  // Redondea las esquinas de una ruta: donde la dirección cambia más de minDeg
+  // grados, el vértice se sustituye por un arco de radio r (acotado por el
+  // largo de los tramos vecinos). Devuelve también un mapa de índices viejos →
+  // nuevos, para seguir sabiendo dónde empieza y acaba cada nudo.
+  function fillet(pts, r = 56, minDeg = 22) {
+    const out = [], map = [];
+    for (let i = 0; i < pts.length; i++) {
+      const P = pts[i], A = pts[i - 1], B = pts[i + 1];
+      map[i] = out.length;
+      if (!A || !B) { out.push(P); continue; }
+      let d1x = P[0] - A[0], d1y = P[1] - A[1], d2x = B[0] - P[0], d2y = B[1] - P[1];
+      const l1 = Math.hypot(d1x, d1y), l2 = Math.hypot(d2x, d2y);
+      if (l1 < 1e-6 || l2 < 1e-6) { out.push(P); continue; }
+      d1x /= l1; d1y /= l1; d2x /= l2; d2y /= l2;
+      const ang = Math.acos(clamp(d1x * d2x + d1y * d2y, -1, 1));
+      if (ang < minDeg * Math.PI / 180 || ang > Math.PI - 0.05) { out.push(P); continue; }
+      const tanH = Math.tan(ang / 2);
+      const rr = Math.min(r, 0.45 * l1 / tanH, 0.45 * l2 / tanH), t = rr * tanH;
+      const sgn = Math.sign(d1x * d2y - d1y * d2x) || 1;
+      const T1 = [P[0] - d1x * t, P[1] - d1y * t];
+      const C = [T1[0] - d1y * sgn * rr, T1[1] + d1x * sgn * rr];   // centro, hacia el interior del giro
+      const a0 = Math.atan2(T1[1] - C[1], T1[0] - C[0]);
+      const n = Math.max(2, Math.ceil(ang / (Math.PI / 10)));
+      for (let k = 0; k <= n; k++) { const a = a0 + sgn * ang * k / n; out.push([C[0] + rr * Math.cos(a), C[1] + rr * Math.sin(a)]); }
+    }
+    map[pts.length] = out.length;
+    return { pts: out, map };
+  }
+
+  // Hace vagar los tramos rectos de una ruta: los subdivide y desplaza los
+  // puntos nuevos con un ruido de onda larga (dos senos lentos), que se apaga
+  // cerca de los extremos de cada tramo para no mover los nudos ni las esquinas.
+  // fixed: índices de puntos que no se tocan (los de los nudos).
+  // Los cruces horizontales vagan sobre todo hacia abajo (arriba está el texto
+  // de la etiqueta); las bajadas por el margen vagan a los lados, y en pantallas
+  // estrechas solo hacia dentro.
+  function wander(pts, fixed, seed, gx, vw) {
+    const out = [], map = [];
+    const noise = l => 0.62 * Math.sin(l / 210 * 2 * Math.PI + seed) + 0.38 * Math.sin(l / 470 * 2 * Math.PI + seed * 1.7);
+    const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+    let l = 0;
+    for (let i = 0; i < pts.length; i++) {
+      map[i] = out.length; out.push(pts[i]);
+      if (i === pts.length - 1) break;
+      const a = pts[i], b = pts[i + 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if ((fixed.has(i) && fixed.has(i + 1)) || len < 110) { l += len; continue; }
+      const dx = (b[0] - a[0]) / len, dy = (b[1] - a[1]) / len, horiz = Math.abs(dx) > Math.abs(dy);
+      const n = Math.floor(len / 70);
+      for (let k = 1; k <= n; k++) {
+        const t = k / (n + 1), d = Math.min(len * t, len * (1 - t));
+        const w = smooth(d / 110), nz = noise(l + len * t) * w;
+        let ox = 0, oy = 0;
+        if (horiz) oy = 5 * w + 15 * nz;
+        else if (gx < 30) ox = (a[0] < vw / 2 ? 1 : -1) * 11 * (nz + w);
+        else ox = 26 * nz;
+        out.push([a[0] + dx * len * t + ox, a[1] + dy * len * t + oy]);
+      }
+      l += len;
+    }
+    map[pts.length] = out.length;
+    return { pts: out, map };
+  }
+
   // punto y tangente a una longitud de arco dada
   function at(S, l) {
     let lo = 0, hi = S.length - 1;
@@ -350,7 +413,9 @@ window.Yarn = (() => {
       if (this.hero) {
         const [ex, ey] = this.hero.point('end');
         const heroBottom = this.hero.el.closest('section').getBoundingClientRect().bottom + scrollY;
-        pts.push([ex, ey], [ex + 30, ey - 50], [Math.min(vw - gx, ex + 120), ey + 120], [vw - gx, heroBottom - 60]);
+        const w = this.hero.el.getBoundingClientRect().width;   // la cola sale hacia arriba a la derecha y se curva
+        pts.push([ex, ey], [ex + 0.034 * w, ey - 0.04 * w], [ex + 0.1 * w, ey - 0.05 * w], [ex + 0.16 * w, ey + 0.01 * w],
+                 [Math.min(vw - gx, ex + 0.17 * w), ey + 0.11 * w], [vw - gx, heroBottom - 60]);
         side = 1;
       } else {
         pts.push([gx, -60], [gx, 120]);
@@ -366,19 +431,24 @@ window.Yarn = (() => {
           const y = row[0].cy + row[0].base;                  // línea por la que pasa el hilo (bajo los nudos)
           row.sort((a, b) => (a.cx - b.cx) * fx);
           const last = pts[pts.length - 1];
-          if (y - last[1] > 120) pts.push([xAt(side), y - 90]); // baja recto por el margen
           // puntos intermedios en los tramos largos, para que el cruce vaya recto
           const across = (xa, xb) => { const n = Math.floor(Math.abs(xb - xa) / 260); for (let i = 1; i <= n; i++) pts.push([xa + (xb - xa) * i / (n + 1), y]); };
-          pts.push([xAt(side), y]);
-          let x = xAt(side);
+          const xs = xAt(side), xe = xAt(-side);
+          const entry0 = row[0].cx - fx * 2.8 * row[0].rad * row[0].vr.scale;
+          // si el primer nudo está pegado al margen, se entra en diagonal (no cabe una
+          // esquina suave); los puntos de entrada solo si hay sitio por encima
+          const room = y - last[1];
+          if (Math.abs(entry0 - xs) < 90) { if (room > 170) pts.push([xs, y - 130], [(xs + entry0) / 2, y - 40]); }
+          else { if (room > 120) pts.push([xs, y - 90]); if (room > 30) pts.push([xs, y]); }
+          let x = pts[pts.length - 1][0];
           row.forEach(k => {
             const entry = k.cx - fx * 2.8 * k.rad * k.vr.scale;
-            across(x, entry);
+            if (Math.abs(entry - x) > 60) across(x, entry);
             k.i0 = pts.length; pts.push(...loop(k.cx, k.cy, k.rad, fx, 0, fx, k.type, k.vr)); k.i1 = pts.length - 1;
             x = pts[pts.length - 1][0];
           });
-          across(x, xAt(-side));
-          pts.push([xAt(-side), y]);
+          if (Math.abs(xe - x) < 90) pts.push([(xe + x) / 2, y + 40], [xe, y + 130]);
+          else { across(x, xe); pts.push([xe, y]); }
           side = -side;
         } else {
           // un nudo solo con texto al lado: el hilo no cruza; baja por el margen
@@ -387,13 +457,17 @@ window.Yarn = (() => {
           if (side > 0) {
             // viene por la derecha: cruza por el hueco que hay encima del bloque
             const block = k.el.closest('.step, article, li, figure, .section-head') || k.el;
-            const ty = pageRect(block).top - 24;
-            pts.push([xAt(1), ty - 60], [xAt(1), ty], [vw * 0.5, ty + 6], [xAt(-1), ty]);
+            const prev = pts[pts.length - 1];
+            const ty = Math.max(pageRect(block).top - 24, prev[1] + 40);
+            if (ty - 60 > prev[1] + 30) pts.push([xAt(1), ty - 60]);
+            pts.push([xAt(1), ty], [vw * 0.5, ty + 6], [xAt(-1), ty]);
             side = -1;
           }
+          // aproximación por encima del nudo solo si hay sitio (nunca volver atrás);
           // si el nudo anterior estaba en la misma vertical, el hilo sigue recto
-          const x = k.cx - k.base, last = pts[pts.length - 1];
-          if (Math.abs(last[0] - x) > 4) pts.push([last[0], k.cy - k.rad * 4 - 40], [x, k.cy - k.rad * 3.2]);
+          const x = k.cx - k.base, last = pts[pts.length - 1], topY = k.cy - 2.8 * k.rad * k.vr.scale;
+          if (topY - last[1] > 130) pts.push([last[0], topY - 80], [x, topY - 30]);
+          else if (topY - last[1] > 50 && Math.abs(last[0] - x) > 4) pts.push([x, topY - 25]);
           k.i0 = pts.length; pts.push(...loop(k.cx, k.cy, k.rad, 0, 1, 1, k.type, k.vr)); k.i1 = pts.length - 1;
         }
       });
@@ -406,8 +480,28 @@ window.Yarn = (() => {
       } else {
         pts.push([xAt(side), document.documentElement.scrollHeight + 60]);
       }
-      this.S = sample(pts, 3);
-      this.ranges = knots.filter(k => k.i0 != null).map(k => [this.S.marks[k.i0], this.S.marks[k.i1]]);
+      const fixed = new Set();
+      knots.forEach(k => { if (k.i0 != null) for (let i = k.i0; i <= k.i1; i++) fixed.add(i); });
+      // seguro: fuera de los nudos, un vértice que hace volver el hilo sobre sí mismo se quita
+      this.removed = 0;
+      for (let i = 1; i < pts.length - 1; i++) {
+        if (fixed.has(i)) continue;
+        const a = pts[i - 1], p = pts[i], b = pts[i + 1];
+        const d1 = [p[0] - a[0], p[1] - a[1]], d2 = [b[0] - p[0], b[1] - p[1]];
+        const l1 = Math.hypot(...d1), l2 = Math.hypot(...d2);
+        if (l1 > 1e-6 && l2 > 1e-6 && (d1[0] * d2[0] + d1[1] * d2[1]) / (l1 * l2) < -0.8) {
+          this.removed++; console.warn('nudo: vértice eliminado por volver atrás', p);
+          pts.splice(i, 1);
+          knots.forEach(k => { if (k.i0 != null && k.i0 > i) { k.i0--; k.i1--; } });
+          fixed.clear(); knots.forEach(k => { if (k.i0 != null) for (let j = k.i0; j <= k.i1; j++) fixed.add(j); });
+          i -= 2; if (i < 0) i = 0;
+        }
+      }
+      this.route = pts;   // ruta antes de vagar y redondear (para depurar)
+      const w = wander(pts, fixed, seed, gx, vw);
+      const f = fillet(w.pts);
+      this.S = sample(f.pts, 3);
+      this.ranges = knots.filter(k => k.i0 != null).map(k => [this.S.marks[f.map[w.map[k.i0]]], this.S.marks[f.map[w.map[k.i1]]]]);
       // «y» máxima acumulada: así la longitud dibujada crece de forma monótona con el scroll
       let m = -Infinity; this.maxY = this.S.map(p => (m = Math.max(m, p.y)));
       this.L = this.S.length ? this.S[this.S.length - 1].l : 0;
@@ -464,43 +558,68 @@ window.Yarn = (() => {
   /* =========================================================
      SUBRAYADO DE HILO (hover)
      ========================================================= */
+  // opts: keep (queda cosido siempre; al pasar el cursor se descose y se vuelve
+  // a coser), color (variable CSS, p. ej. '--lila'; si no, el color del hilo),
+  // width (grosor; si no, según el tamaño de letra)
   class Underline {
-    constructor(el) {
+    constructor(el, opts = {}) {
       this.el = el; el.classList.add('has-yarn-underline');
       this.canvas = document.createElement('canvas'); this.canvas.className = 'yarn-underline';
       el.appendChild(this.canvas);
-      this.p = 0; this.S = []; this.w = 0;
+      this.p = 0; this.S = []; this.w = 0; this.opts = opts;
       // el enlace de la página actual queda cosido siempre
-      this.keep = el.hasAttribute('aria-current') || 'yarnKeep' in el.dataset;
+      this.keep = opts.keep || el.hasAttribute('aria-current') || 'yarnKeep' in el.dataset;
       this.target = this.keep ? 1 : 0;
+      this.restyle();
       const host = el.closest('[data-yarn-host]') || el;
-      host.addEventListener('pointerenter', () => { this.target = 1; });
-      host.addEventListener('pointerleave', () => { this.target = this.keep ? 1 : 0; });
-      host.addEventListener('focusin', () => { this.target = 1; });
-      host.addEventListener('focusout', () => { this.target = this.keep ? 1 : 0; });
-      styleListeners.add(() => { this.dirty = true; });
-      tickers.add(dt => this.tick(dt));
+      // los que están siempre cosidos no se descosen: se sacuden un momento
+      const on = () => { if (this.keep) this.wiggle = 1; else this.target = 1; };
+      const off = () => { if (!this.keep) this.target = 0; };
+      host.addEventListener('pointerenter', on); host.addEventListener('pointerleave', off);
+      host.addEventListener('focusin', on); host.addEventListener('focusout', off);
+      styleListeners.add(() => { this.restyle(); this.dirty = true; });
+      tickers.add((dt, t) => this.tick(dt, t));
+    }
+    restyle() {
+      const fs = parseFloat(getComputedStyle(this.el).fontSize) || 16;
+      const width = this.opts.width || clamp(fs / 13, 2.2, 5.5);
+      const color = this.opts.color ? cssVar(this.opts.color) || STYLE.color : STYLE.color;
+      this.style = { ...STYLE, color, ply: rgba(mix(color, cssVar('--rosa') || '#ffdada', 0.55), 0.85), width, plyGap: width * 1.6 };
+      this.h = Math.ceil(width * 5); this.w = 0;
+    }
+    // la onda del hilo; con energía (wiggle) se sacude: más amplitud y la fase corre
+    wave(t = 0, e = 0) {
+      const y = this.h / 2, a = this.style.width, pts = [[0, y]];
+      const step = a * 15, amp = a * (1 + 2.2 * e), ph = t * 16;
+      for (let x = a * 11; x < this.w; x += step) pts.push([x + Math.sin(ph + x / step) * a * 2 * e, y + Math.sin(Math.PI * (pts.length % 2 ? 1.5 : 0.5) + ph * 0.5) * amp * 0]);
+      // forma: zigzag suave; al sacudirse, cada vértice sube o baja según una onda que viaja
+      pts.forEach((p, i) => { if (i) p[1] = y + (i % 2 ? -1 : 1) * amp * (e ? Math.cos(ph + i * 0.9) : 1); });
+      pts.push([this.w, y]);
+      return pts;
     }
     layout() {
-      const w = this.el.clientWidth, h = 14;
+      const w = Math.round(this.el.getBoundingClientRect().width), h = this.h;   // también para elementos en línea
       if (!w || w === this.w) return;
       this.w = w; this.ctx = fitCanvas(this.canvas, w, h);
-      const y = 7, pts = [[0, y]];
-      for (let x = 24; x < w; x += 34) pts.push([x, y + (pts.length % 2 ? -2.2 : 2.2)]);
-      pts.push([w, y]);
-      this.S = sample(pts, 2); this.L = this.S[this.S.length - 1].l; this.dirty = true;
+      this.S = sample(this.wave(), 2); this.L = this.S[this.S.length - 1].l; this.dirty = true;
     }
-    tick(dt) {
-      if (this.p === this.target && !this.dirty) return;
+    tick(dt, t) {
+      if (this.p === this.target && !this.dirty && !this.wiggle) return;
       if (!this.el.isConnected) return;
       this.layout();
       if (!this.ctx) return;
       const speed = 2.4; // longitud completa por segundo
       this.p = this.target > this.p ? Math.min(this.target, this.p + speed * dt) : Math.max(this.target, this.p - speed * dt * 1.6);
+      let S = this.S;
+      if (this.wiggle) {
+        this.wiggle *= Math.exp(-dt * 2.4);
+        if (this.wiggle < 0.02) this.wiggle = 0;
+        S = sample(this.wave(t, this.wiggle), 2);
+      }
       this.dirty = false;
-      this.ctx.clearRect(0, 0, this.w, 14);
+      this.ctx.clearRect(0, 0, this.w, this.h);
       // al recogerse, el hilo se va por donde entró (se acorta desde el final)
-      stroke(this.ctx, this.S, 0, this.L * this.p, { ...STYLE, width: 2.2, plyGap: 3.6 });
+      stroke(this.ctx, S, 0, S[S.length - 1].l * this.p, this.style);
     }
   }
 
@@ -518,8 +637,10 @@ window.Yarn = (() => {
     const thread = new Thread({ hero: logos.hero, footer: logos.footer });
     if (reduced) { thread.drawn = thread.L; if (logos.footer) logos.footer.set(1); }
     document.querySelectorAll('[data-yarn-underline]').forEach(el => new Underline(el));
+    // palabras cosidas del texto: hilo del color de cada una, siempre puesto
+    document.querySelectorAll('.sq').forEach(el => new Underline(el, { keep: true, color: el.dataset.color }));
     return { logos, thread };
   }
 
-  return { init, sample, at, loop, KNOTS, variant, stroke, STYLE, Logo, Thread, Underline, tickers, reduced };
+  return { init, sample, fillet, wander, at, loop, KNOTS, variant, stroke, STYLE, Logo, Thread, Underline, tickers, reduced };
 })();
