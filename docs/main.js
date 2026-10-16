@@ -23,6 +23,7 @@
     menuBtn.setAttribute('aria-expanded', open);
     menu.hidden = !open;
     menuBtn.querySelector('.menu-btn-label').textContent = open ? 'cerrar' : 'menú';
+    if (yarn.icon) yarn.icon.set(open);
     document.documentElement.style.overflow = open ? 'hidden' : '';
   }
   menuBtn.addEventListener('click', () => setMenu(menu.hidden));
@@ -71,14 +72,14 @@
 
   /* ---------------- visor de imágenes ----------------
      Cualquier imagen dentro de .blocks o [data-zoom] se abre ampliada;
-     las flechas recorren las imágenes de la misma página. */
+     las flechas (o deslizar en móvil) recorren las imágenes de la misma página. */
   const lb = document.getElementById('lightbox');
   const fig = lb.querySelector('.lb-fig');
   const count = lb.querySelector('.lb-count');
   const zoomables = [...document.querySelectorAll('.blocks img, [data-zoom] img')];
   let idx = 0;
   function show(i) {
-    idx = clamp(i, 0, zoomables.length - 1);
+    idx = (i + zoomables.length) % zoomables.length;
     const img = zoomables[idx];
     fig.innerHTML = `<img src="${img.currentSrc || img.src}" alt="${img.alt || ''}">` + (img.alt ? `<figcaption>${img.alt}</figcaption>` : '');
     count.textContent = `${idx + 1} / ${zoomables.length}`;
@@ -92,6 +93,14 @@
   lb.querySelector('.lb-close').addEventListener('click', () => lb.close());
   lb.addEventListener('keydown', e => { if (e.key === 'ArrowRight') show(idx + 1); if (e.key === 'ArrowLeft') show(idx - 1); });
   lb.addEventListener('click', e => { if (e.target === lb) lb.close(); });
+  lb.querySelector('.lb-foot').hidden = zoomables.length < 2;
+  let sx = null;
+  fig.addEventListener('touchstart', e => { sx = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+  fig.addEventListener('touchend', e => {
+    if (sx == null || zoomables.length < 2) return;
+    const dx = e.changedTouches[0].clientX - sx; sx = null;
+    if (Math.abs(dx) > 50) show(idx + (dx < 0 ? 1 : -1));
+  });
   lb.addEventListener('close', () => { document.documentElement.style.overflow = ''; });
 
   /* ---------------- contacto ---------------- */

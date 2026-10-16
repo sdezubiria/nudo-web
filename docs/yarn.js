@@ -447,8 +447,13 @@ window.Yarn = (() => {
             k.i0 = pts.length; pts.push(...loop(k.cx, k.cy, k.rad, fx, 0, fx, k.type, k.vr)); k.i1 = pts.length - 1;
             x = pts[pts.length - 1][0];
           });
-          if (Math.abs(xe - x) < 90) pts.push([(xe + x) / 2, y + 40], [xe, y + 130]);
-          else { across(x, xe); pts.push([xe, y]); }
+          if (Math.abs(xe - x) < 90) {
+            // el último nudo está pegado al margen: el hilo sigue un poco hacia
+            // fuera y baja en un arco (sin esquina), luego vuelve al margen
+            const R = clamp(fx < 0 ? x - 8 : vw - 8 - x, 14, 34);
+            for (let a = 20; a <= 90; a += 14) pts.push([x + fx * R * Math.sin(rad(a)), y + R * (1 - Math.cos(rad(a)))]);
+            pts.push([x + fx * R, y + R + 60], [xe, y + R + 170]);
+          } else { across(x, xe); pts.push([xe, y]); }
           side = -side;
         } else {
           // un nudo solo con texto al lado: el hilo no cruza; baja por el margen
@@ -538,10 +543,11 @@ window.Yarn = (() => {
       if (diff > innerHeight * 1.1) { this.drawn = this.target - innerHeight * 0.6; diff = this.target - this.drawn; this.need = true; }
       if (Math.abs(diff) > 0.5) {
         // se dibuja a una velocidad máxima: si bajas rápido, el hilo te alcanza;
-        // dentro de un nudo va mucho más despacio, para verlo formarse
-        const inKnot = (this.ranges || []).some(([a, b]) => this.drawn > a - 20 && this.drawn < b + 20);
-        const vmax = inKnot ? 420 : 1300;
-        const step = Math.sign(diff) * Math.min(Math.abs(diff) * 0.08, vmax * dt);
+        // al acercarse a un nudo frena poco a poco y dentro va despacio, para verlo formarse
+        let near = Infinity;
+        for (const [a, b] of this.ranges || []) near = Math.min(near, this.drawn < a ? a - this.drawn : this.drawn > b ? this.drawn - b : 0);
+        const k = clamp(near / 160, 0, 1), vmax = 130 + (1300 - 130) * k * k * (3 - 2 * k);
+        const step = Math.sign(diff) * Math.min(Math.max(Math.abs(diff) * 0.08, Math.min(Math.abs(diff), 60 * dt)), vmax * dt);
         this.drawn += Math.abs(step) < 0.5 ? diff : step; this.need = true;
       }
       if (this.footer && this.drawn >= this.L - 1 && !this.footer.done && this.footer.target < 1) this.footer.draw(0.7);
@@ -561,6 +567,9 @@ window.Yarn = (() => {
   // opts: keep (queda cosido siempre; al pasar el cursor se descose y se vuelve
   // a coser), color (variable CSS, p. ej. '--lila'; si no, el color del hilo),
   // width (grosor; si no, según el tamaño de letra)
+  // Con [data-yarn-show] (o keep) el hilo se cose solo al entrar en pantalla
+  // cuando no hay cursor (móvil); los que quedan cosidos se cosen así siempre.
+  const canHover = matchMedia('(hover: hover)').matches;
   class Underline {
     constructor(el, opts = {}) {
       this.el = el; el.classList.add('has-yarn-underline');
@@ -568,15 +577,23 @@ window.Yarn = (() => {
       el.appendChild(this.canvas);
       this.p = 0; this.S = []; this.w = 0; this.opts = opts;
       // el enlace de la página actual queda cosido siempre
-      this.keep = opts.keep || el.hasAttribute('aria-current') || 'yarnKeep' in el.dataset;
-      this.target = this.keep ? 1 : 0;
+      const current = el.hasAttribute('aria-current');
+      this.keep = opts.keep || current || 'yarnKeep' in el.dataset;
+      this.target = current || (this.keep && reduced) ? 1 : 0;
+      if (this.target) this.p = 1;
       this.restyle();
       const host = el.closest('[data-yarn-host]') || el;
-      // los que están siempre cosidos no se descosen: se sacuden un momento
-      const on = () => { if (this.keep) this.wiggle = 1; else this.target = 1; };
+      // los que están siempre cosidos, al pasar el cursor se descosen y se vuelven a coser
+      const on = () => { if (this.keep) { if (this.p > 0.6) { this.target = 0; this.resew = true; } } else this.target = 1; };
       const off = () => { if (!this.keep) this.target = 0; };
-      host.addEventListener('pointerenter', on); host.addEventListener('pointerleave', off);
-      host.addEventListener('focusin', on); host.addEventListener('focusout', off);
+      if (canHover) {
+        host.addEventListener('pointerenter', on); host.addEventListener('pointerleave', off);
+        host.addEventListener('focusin', on); host.addEventListener('focusout', off);
+      }
+      if ((this.keep && !current) || (!canHover && 'yarnShow' in el.dataset)) {
+        const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { this.target = 1; io.disconnect(); } }, { rootMargin: '0px 0px -12% 0px' });
+        io.observe(el);
+      }
       styleListeners.add(() => { this.restyle(); this.dirty = true; });
       tickers.add((dt, t) => this.tick(dt, t));
     }
@@ -587,13 +604,10 @@ window.Yarn = (() => {
       this.style = { ...STYLE, color, ply: rgba(mix(color, cssVar('--rosa') || '#ffdada', 0.55), 0.85), width, plyGap: width * 1.6 };
       this.h = Math.ceil(width * 5); this.w = 0;
     }
-    // la onda del hilo; con energía (wiggle) se sacude: más amplitud y la fase corre
-    wave(t = 0, e = 0) {
+    // la onda del hilo: un zigzag suave
+    wave() {
       const y = this.h / 2, a = this.style.width, pts = [[0, y]];
-      const step = a * 15, amp = a * (1 + 2.2 * e), ph = t * 16;
-      for (let x = a * 11; x < this.w; x += step) pts.push([x + Math.sin(ph + x / step) * a * 2 * e, y + Math.sin(Math.PI * (pts.length % 2 ? 1.5 : 0.5) + ph * 0.5) * amp * 0]);
-      // forma: zigzag suave; al sacudirse, cada vértice sube o baja según una onda que viaja
-      pts.forEach((p, i) => { if (i) p[1] = y + (i % 2 ? -1 : 1) * amp * (e ? Math.cos(ph + i * 0.9) : 1); });
+      for (let x = a * 11; x < this.w; x += a * 15) pts.push([x, y + (pts.length % 2 ? -1 : 1) * a]);
       pts.push([this.w, y]);
       return pts;
     }
@@ -603,23 +617,60 @@ window.Yarn = (() => {
       this.w = w; this.ctx = fitCanvas(this.canvas, w, h);
       this.S = sample(this.wave(), 2); this.L = this.S[this.S.length - 1].l; this.dirty = true;
     }
-    tick(dt, t) {
-      if (this.p === this.target && !this.dirty && !this.wiggle) return;
+    tick(dt) {
+      if (this.p === this.target && !this.dirty) return;
       if (!this.el.isConnected) return;
       this.layout();
       if (!this.ctx) return;
-      const speed = 2.4; // longitud completa por segundo
-      this.p = this.target > this.p ? Math.min(this.target, this.p + speed * dt) : Math.max(this.target, this.p - speed * dt * 1.6);
-      let S = this.S;
-      if (this.wiggle) {
-        this.wiggle *= Math.exp(-dt * 2.4);
-        if (this.wiggle < 0.02) this.wiggle = 0;
-        S = sample(this.wave(t, this.wiggle), 2);
-      }
+      const speed = this.keep ? 1.6 : 2.4; // longitud completa por segundo
+      this.p = this.target > this.p ? Math.min(this.target, this.p + speed * dt) : Math.max(this.target, this.p - speed * dt * 1.8);
+      if (this.resew && this.p === 0) { this.resew = false; this.target = 1; }
       this.dirty = false;
       this.ctx.clearRect(0, 0, this.w, this.h);
       // al recogerse, el hilo se va por donde entró (se acorta desde el final)
-      stroke(this.ctx, S, 0, S[S.length - 1].l * this.p, this.style);
+      stroke(this.ctx, this.S, 0, this.L * this.p, this.style);
+    }
+  }
+
+  /* =========================================================
+     ICONO DEL MENÚ — dos hebras de hilo; al abrir se recogen y
+     se vuelven a dibujar cruzadas (una equis)
+     ========================================================= */
+  class Icon {
+    constructor(el) {
+      this.el = el; this.w = 30; this.h = 22;
+      this.canvas = document.createElement('canvas'); this.canvas.className = 'yarn-icon';
+      el.appendChild(this.canvas);
+      this.ctx = fitCanvas(this.canvas, this.w, this.h);
+      this.shape = 'menu'; this.next = null; this.p = reduced ? 1 : 0; this.target = 1;
+      this.build();
+      styleListeners.add(() => { this.style = { ...STYLE, width: 2.4, plyGap: 3.6 }; this.dirty = true; });
+      this.style = { ...STYLE, width: 2.4, plyGap: 3.6 };
+      tickers.add(dt => this.tick(dt));
+    }
+    build() {
+      const { w, h } = this;
+      // hebras con una onda suave, como el subrayado; en la equis, un poco curvas
+      const strand = (y, ph) => { const P = []; for (let i = 0; i <= 6; i++) P.push([2 + (w - 4) * i / 6, y + Math.sin(i * 1.3 + ph) * 1.6]); return P; };
+      const L = this.shape === 'menu'
+        ? [strand(h * 0.3, 0), strand(h * 0.7, 2)]
+        : [[[6, 3], [12, 8.5], [17, 13], [24, 19]], [[6, 19], [11.5, 13.5], [18, 8], [24, 3]]];
+      this.S = L.map(pts => sample(pts, 1.5));
+      this.dirty = true;
+    }
+    set(open) {
+      const want = open ? 'close' : 'menu';
+      if (want === (this.next || this.shape)) return;
+      if (reduced) { this.shape = want; this.build(); return; }
+      this.next = want; this.target = 0;
+    }
+    tick(dt) {
+      if (this.p === this.target && !this.dirty) return;
+      this.p = this.target > this.p ? Math.min(this.target, this.p + 3.2 * dt) : Math.max(this.target, this.p - 6 * dt);
+      if (this.p === 0 && this.next) { this.shape = this.next; this.next = null; this.build(); this.target = 1; }
+      this.dirty = false;
+      this.ctx.clearRect(0, 0, this.w, this.h);
+      for (const S of this.S) stroke(this.ctx, S, 0, S[S.length - 1].l * this.p, this.style);
     }
   }
 
@@ -639,8 +690,9 @@ window.Yarn = (() => {
     document.querySelectorAll('[data-yarn-underline]').forEach(el => new Underline(el));
     // palabras cosidas del texto: hilo del color de cada una, siempre puesto
     document.querySelectorAll('.sq').forEach(el => new Underline(el, { keep: true, color: el.dataset.color }));
-    return { logos, thread };
+    const icon = document.querySelector('[data-yarn-icon]');
+    return { logos, thread, icon: icon && new Icon(icon) };
   }
 
-  return { init, sample, fillet, wander, at, loop, KNOTS, variant, stroke, STYLE, Logo, Thread, Underline, tickers, reduced };
+  return { init, sample, fillet, wander, at, loop, KNOTS, variant, stroke, STYLE, Logo, Thread, Underline, Icon, tickers, reduced };
 })();
