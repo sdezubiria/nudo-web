@@ -11,7 +11,7 @@
   <meta property="og:image" content="assets/img/logo-nudo.png">
   <link rel="icon" type="image/png" href="assets/img/isotipo.png">
   <link rel="preload" href="assets/fonts/DMSans-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=202610161523">
+  <link rel="stylesheet" href="styles.css?v=202610200749">
   <script>
     // paleta de prueba guardada (ver paleta.js): se aplica antes de pintar
     try { const v = JSON.parse(localStorage.getItem('nudo-paleta')); if (v) for (const k in v) document.documentElement.style.setProperty(k, v[k]); } catch (e) {}
@@ -34,7 +34,7 @@
 
 <header class="site-header">
   <a class="brand" href="index.html" aria-label="nudo — inicio">
-    <img src="assets/img/logo-nudo-small.png" alt="nudo" width="180" height="63">
+    <span class="logo brand-logo" data-logo="header"><img class="logo-fallback" src="assets/img/logo-nudo.png" alt="nudo" width="1600" height="757"></span>
   </a>
   <nav class="nav" aria-label="Principal">
     <a href="proyectos.html" data-yarn-underline>proyectos</a>
@@ -146,11 +146,10 @@
   </div>
 </dialog>
 
-<div class="cursor-label" aria-hidden="true">ver <svg class="ast"><use href="#ast"/></svg></div>
 <div class="toast" role="status" aria-live="polite"></div>
 
-<script src="yarn.js?v=202610161523"></script>
-<script src="main.js?v=202610161523"></script>
-<script src="paleta.js?v=202610161523"></script>
+<script src="yarn.js?v=202610200749"></script>
+<script src="main.js?v=202610200749"></script>
+<script src="paleta.js?v=202610200749"></script>
 </body>
 </html>

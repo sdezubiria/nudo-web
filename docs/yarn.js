@@ -177,8 +177,6 @@ window.Yarn = (() => {
   const KNOTS = {
     // un bucle: cruce sobre la línea, vuelta completa, cruce otra vez
     loop: () => [...IN, ...arc(-50, 230, 16), ...OUT],
-    // dos vueltas, la segunda por dentro
-    coil: () => [...IN, ...arc(-50, 230, 16), ...arc(230, 590, 20, 0.7), [0, 0], ...OUT],
     // bucle con la punta pasada por dentro (un nudo simple visto desde arriba)
     twist: () => [...IN, [0.6, 0.4], [0.98, 1.05], [0.65, 1.78], [-0.1, 2.02], [-0.85, 1.68], [-1.08, 0.98], [-0.72, 0.48], [-0.12, 0.5], [0.5, 0.76], [0.98, 0.52], [1.32, 0.06], [1.9, -0.14], [2.8, 0]],
     // dos bucles seguidos, el segundo más pequeño
@@ -267,6 +265,8 @@ window.Yarn = (() => {
       [[1215,315],[1300,312],[1380,350],[1408,435],[1385,520],[1300,562],[1215,545],[1160,470],[1165,380],[1210,318],[1290,322],[1370,360],[1398,435],[1375,515],[1295,552],[1225,535],[1175,470],[1180,385],[1225,330]],
     ],
   };
+  // poses del vaivén (grados) y cuadros por segundo
+  const WOBBLE = [0, 1.6, -0.6, 2.2, 0.8, -1.4], WOBBLE_FPS = 7;
   function toPath(pts) {
     let d = `M ${pts[0][0]} ${pts[0][1]}`;
     for (let i = 0; i < pts.length - 1; i++) {
@@ -287,19 +287,28 @@ window.Yarn = (() => {
       // una ruta por letra (el canvas reinicia el guion en cada «M»), con su
       // longitud y su posición dentro del trazado total: así se escriben en orden
       let off = 0;
-      this.letters = LOGO.letters.map(pts => {
+      this.letters = LOGO.letters.map((pts, i) => {
         const d = toPath(pts), L = svgEl('path', { d }).getTotalLength();
-        const l = { path: new Path2D(d), L, off }; off += L; return l;
+        // eje del vaivén: el centro de la letra; la «o» gira desde su cola, donde nace el hilo
+        const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+        const pivot = i === LOGO.letters.length - 1 ? pts[pts.length - 1]
+          : [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+        const l = { path: new Path2D(d), L, off, pivot }; off += L; return l;
       });
       this.L = off;
+      // vaivén de animación cuadro a cuadro (en todos los logos): cada letra salta
+      // entre unas pocas poses, a pocos cuadros por segundo, como en stop motion
+      this.wobble = !reduced;
+      this.pose = 0; this.poseT = 0; this.visible = true;
+      if (this.wobble) new IntersectionObserver(([e]) => { this.visible = e.isIntersecting; }).observe(el);
       this.p = 0; this.target = 0; this.speed = 0.55; // fracción por segundo
       this.done = false; this.onDone = null; this.ready = false;
       const go = () => { this.ready = true; el.classList.add('is-yarn'); this.resize(); };
       this.img.complete && this.img.naturalWidth ? go() : this.img.addEventListener('load', go);
       new ResizeObserver(() => this.resize()).observe(el);
       tickers.add(dt => this.tick(dt));
-      // un toque deshace el hilo y lo vuelve a dibujar
-      el.addEventListener('click', () => this.redraw());
+      // un toque deshace el hilo y lo vuelve a dibujar (el del encabezado es un enlace al inicio)
+      if (el.dataset.logo !== 'header') el.addEventListener('click', () => this.redraw());
     }
     resize() {
       const r = this.el.getBoundingClientRect();
@@ -319,15 +328,25 @@ window.Yarn = (() => {
       ctx.lineWidth = LOGO.mask; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.strokeStyle = this.pattern;
       const drawn = this.L * this.p;
-      for (const l of this.letters) {
+      this.letters.forEach((l, i) => {
         const d = clamp(drawn - l.off, 0, l.L);
-        if (d <= 0) break;
+        if (d <= 0) return;
         ctx.setLineDash([d, l.L + 10]);
-        ctx.stroke(l.path);
-      }
+        if (this.wobble) {
+          // la foto gira con la letra (el patrón sigue la transformación)
+          const [px, py] = l.pivot, a = WOBBLE[(this.pose + i * 2) % WOBBLE.length] * Math.PI / 180;
+          ctx.save(); ctx.translate(px, py); ctx.rotate(i % 2 ? -a : a); ctx.translate(-px, -py);
+          ctx.stroke(l.path);
+          ctx.restore();
+        } else ctx.stroke(l.path);
+      });
       ctx.restore();
     }
     tick(dt = 1 / 60) {
+      if (this.wobble && this.visible && this.p > 0) {
+        this.poseT += dt;
+        if (this.poseT >= 1 / WOBBLE_FPS) { this.poseT = 0; this.pose = (this.pose + 1) % WOBBLE.length; this.render(); }
+      }
       if (Math.abs(this.target - this.p) < 0.002) {
         if (this.p !== this.target) this.set(this.target);
         if (this.p >= 1 && !this.done) { this.done = true; this.onDone && this.onDone(); }
@@ -397,11 +416,11 @@ window.Yarn = (() => {
         })
         .filter(k => k.el.offsetWidth > 0).sort((a, b) => a.cy - b.cy);
       // tipo de nudo: el que diga data-knot, o se van alternando (los nudos con
-      // número solo usan los que dejan el centro libre)
-      let nl = 0, nn = 0;
+      // número usan el bucle, que deja el centro libre)
+      let nl = 0;
       knots.forEach(k => {
         const numbered = !!k.el.querySelector('span');
-        k.type = KNOTS[k.el.dataset.knot] ? k.el.dataset.knot : numbered ? ['loop', 'coil'][nn++ % 2] : ['loop', 'twist', 'coil', 'pair'][nl++ % 4];
+        k.type = KNOTS[k.el.dataset.knot] ? k.el.dataset.knot : numbered ? 'loop' : ['loop', 'twist', 'pair'][nl++ % 3];
       });
       this.knots = knots;
       this.ranges = [];   // tramos (en longitud) ocupados por nudos
@@ -507,9 +526,8 @@ window.Yarn = (() => {
       const f = fillet(w.pts);
       this.S = sample(f.pts, 3);
       this.ranges = knots.filter(k => k.i0 != null).map(k => [this.S.marks[f.map[w.map[k.i0]]], this.S.marks[f.map[w.map[k.i1]]]]);
-      // «y» máxima acumulada: así la longitud dibujada crece de forma monótona con el scroll
-      let m = -Infinity; this.maxY = this.S.map(p => (m = Math.max(m, p.y)));
       this.L = this.S.length ? this.S[this.S.length - 1].l : 0;
+      this.mapScroll();
       this.need = true;
       this.resize();
     }
@@ -519,36 +537,72 @@ window.Yarn = (() => {
       if (this.w !== w || this.h !== h) { this.w = w; this.h = h; this.ctx = fitCanvas(this.canvas, w, h); }
     }
 
+    // A cada punto del hilo le toca una altura de lectura Y (monótona): la punta
+    // llega a ese punto cuando la línea de lectura de la pantalla pasa por Y.
+    // Si Y fuera solo la altura del punto, un cruce horizontal o un nudo (mucho
+    // hilo a la misma altura) se dibujaría de golpe. Por eso por cada píxel de
+    // scroll se dibujan como mucho RATE píxeles de hilo (menos en los nudos, para
+    // verlos formarse) y lo que sobra se reparte en el scroll de antes y de después.
+    mapScroll() {
+      const S = this.S, n = S.length, RATE = 3.5, KNOT_RATE = 1.4, PAD = 40;
+      if (!n) { this.Y = []; return; }
+      const rate = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        const l = S[i].l;
+        rate[i] = this.ranges.some(([a, b]) => l >= a - PAD && l <= b + PAD) ? KNOT_RATE : RATE;
+      }
+      // y máxima acumulada (el hilo nunca va hacia atrás con el scroll)
+      const base = new Float64Array(n);
+      let m = -Infinity; for (let i = 0; i < n; i++) base[i] = m = Math.max(m, S[i].y);
+      // hacia delante: el tramo se dibuja más tarde; hacia atrás: empieza antes.
+      // El promedio centra el reparto en el sitio del tramo y conserva el límite.
+      const F = new Float64Array(n), B = new Float64Array(n);
+      F[0] = base[0];
+      for (let i = 1; i < n; i++) F[i] = Math.max(base[i], F[i - 1] + (S[i].l - S[i - 1].l) / rate[i]);
+      B[n - 1] = base[n - 1];
+      for (let i = n - 2; i >= 0; i--) B[i] = Math.min(base[i], B[i + 1] - (S[i + 1].l - S[i].l) / rate[i + 1]);
+      this.Y = Array.from(F, (f, i) => (f + B[i]) / 2);
+    }
+
+    // longitud dibujada cuando la línea de lectura está en y (interpolada entre muestras)
     lengthAtY(y) {
-      let lo = 0, hi = this.maxY.length - 1;
-      while (lo < hi) { const mid = (lo + hi) >> 1; if (this.maxY[mid] < y) lo = mid + 1; else hi = mid; }
-      return this.S[lo] ? this.S[lo].l : 0;
+      const Y = this.Y, S = this.S;
+      if (y <= Y[0]) return 0;
+      if (y >= Y[Y.length - 1]) return this.L;
+      let lo = 0, hi = Y.length - 1;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (Y[mid] <= y) lo = mid; else hi = mid; }
+      const t = Y[hi] > Y[lo] ? (y - Y[lo]) / (Y[hi] - Y[lo]) : 1;
+      return S[lo].l + (S[hi].l - S[lo].l) * t;
+    }
+
+    // línea de lectura: un poco por debajo del centro de la pantalla; en la última
+    // pantalla de scroll avanza más deprisa para que el hilo termine justo al llegar abajo
+    readY() {
+      const h = innerHeight, max = Math.max(0, document.documentElement.scrollHeight - h);
+      const r = scrollY + h * 0.72, from = Math.max(0, max - h);
+      if (scrollY <= from || !this.Y.length) return r;
+      const end = Math.max(this.Y[this.Y.length - 1], max + h * 0.72), r0 = from + h * 0.72;
+      return r0 + (end - r0) * clamp((scrollY - from) / Math.max(1, max - from), 0, 1);
     }
 
     tick(dt) {
       if (!this.S.length) return;
       // objetivo: la punta del hilo va un poco por debajo del centro de la pantalla
-      let target = this.lengthAtY(scrollY + innerHeight * 0.72);
+      let target = this.lengthAtY(this.readY());
       if (this.hero && !this.hero.done) {
         // el hilo nace cuando el logo termina la «o»; si ya bajaste, el logo se apura
         if (scrollY > 120 && this.hero.target === 1 && this.hero.speed < 2) this.hero.draw(2.5);
         if (this.hero.p < 0.9) target = 0;
       }
-      if (scrollY + innerHeight >= document.documentElement.scrollHeight - 4) target = this.L;
       if (reduced) target = this.L;
       this.target = target;
       let diff = this.target - this.drawn;
-      // si la punta quedó muy atrás (un salto grande de scroll, un enlace al pie, una
-      // página abierta por la mitad) salta hasta la pantalla: siempre hay hilo a la vista
-      if (diff > innerHeight * 1.1) { this.drawn = this.target - innerHeight * 0.6; diff = this.target - this.drawn; this.need = true; }
+      // si la punta quedó muy atrás (un enlace al pie, una página abierta por la
+      // mitad) salta hasta la pantalla: siempre hay hilo a la vista
+      if (diff > innerHeight * 3) { this.drawn = this.target - innerHeight * 0.6; diff = this.target - this.drawn; this.need = true; }
       if (Math.abs(diff) > 0.5) {
-        // se dibuja a una velocidad máxima: si bajas rápido, el hilo te alcanza;
-        // al acercarse a un nudo frena poco a poco y dentro va despacio, para verlo formarse
-        let near = Infinity;
-        for (const [a, b] of this.ranges || []) near = Math.min(near, this.drawn < a ? a - this.drawn : this.drawn > b ? this.drawn - b : 0);
-        const k = clamp(near / 160, 0, 1), vmax = 130 + (1300 - 130) * k * k * (3 - 2 * k);
-        const step = Math.sign(diff) * Math.min(Math.max(Math.abs(diff) * 0.08, Math.min(Math.abs(diff), 60 * dt)), vmax * dt);
-        this.drawn += Math.abs(step) < 0.5 ? diff : step; this.need = true;
+        // sigue al scroll con un suavizado corto (el ritmo ya lo marca mapScroll)
+        this.drawn += Math.abs(diff) < 1 ? diff : diff * (1 - Math.exp(-dt * 10)); this.need = true;
       }
       if (this.footer && this.drawn >= this.L - 1 && !this.footer.done && this.footer.target < 1) this.footer.draw(0.7);
       if (!this.need) return; this.need = false;
@@ -682,6 +736,7 @@ window.Yarn = (() => {
     if (reduced) {
       Object.values(logos).forEach(l => { l.set(1); l.done = true; l.target = 1; });
     } else {
+      if (logos.header) { logos.header.set(1); logos.header.target = 1; logos.header.done = true; }
       if (logos.hero) logos.hero.draw(0.5);
       if (logos.footer && !document.querySelector('.yarn-thread')) logos.footer.draw();
     }

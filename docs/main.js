@@ -36,7 +36,6 @@
   document.querySelectorAll('.reveal').forEach(el => revealIO.observe(el));
 
   /* ---------------- tarjetas de proyecto ---------------- */
-  const cursorLabel = document.querySelector('.cursor-label');
   document.querySelectorAll('.card').forEach(card => {
     const media = card.querySelector('.card-media');
     if (!media || !canHover || reduced) return;
@@ -45,13 +44,9 @@
       const nx = (e.clientX - r.left) / r.width - 0.5, ny = (e.clientY - r.top) / r.height - 0.5;
       media.style.setProperty('--ry', `${(nx * 6).toFixed(2)}deg`);
       media.style.setProperty('--rx', `${(-ny * 6).toFixed(2)}deg`);
-      cursorLabel.style.setProperty('--x', `${e.clientX}px`);
-      cursorLabel.style.setProperty('--y', `${e.clientY}px`);
-      cursorLabel.classList.add('on');
     });
     media.addEventListener('pointerleave', () => {
       media.style.setProperty('--rx', '0deg'); media.style.setProperty('--ry', '0deg');
-      cursorLabel.classList.remove('on');
     });
   });
 
@@ -159,21 +154,5 @@
     };
     if (reduced) groups.forEach(r => r.g.setAttribute('transform', `rotate(${r.angle})`));
     else Yarn.tickers.add(spin);
-  }
-
-  /* ---------------- la cuerda del contacto se mece ---------------- */
-  const cuerda = document.querySelector('.cuerda');
-  if (cuerda && !reduced) {
-    let px = -9999, py = -9999, dx = 0, dy = 0;
-    addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; }, { passive: true });
-    Yarn.tickers.add((dt, t) => {
-      const r = cuerda.getBoundingClientRect();
-      const tx = px > -999 ? clamp((px - (r.left + r.width / 2)) * 0.03, -18, 18) : 0;
-      const ty = py > -999 ? clamp((py - (r.top + r.height / 2)) * 0.03, -18, 18) : 0;
-      dx += (tx - dx) * 0.04; dy += (ty - dy) * 0.04;
-      cuerda.style.setProperty('--sway', `${(Math.sin(t * 0.7) * 2.2).toFixed(2)}deg`);
-      cuerda.style.setProperty('--dx', `${dx.toFixed(1)}px`);
-      cuerda.style.setProperty('--dy', `${dy.toFixed(1)}px`);
-    });
   }
 })();
