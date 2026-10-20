@@ -125,7 +125,7 @@ window.Yarn = (() => {
   // fixed: índices de puntos que no se tocan (los de los nudos).
   // Los cruces horizontales vagan sobre todo hacia abajo (arriba está el texto
   // de la etiqueta); las bajadas por el margen vagan a los lados, y en pantallas
-  // estrechas solo hacia dentro.
+  // estrechas sin salir del margen (para no tocar el texto).
   function wander(pts, fixed, seed, gx, vw) {
     const out = [], map = [];
     const noise = l => 0.62 * Math.sin(l / 210 * 2 * Math.PI + seed) + 0.38 * Math.sin(l / 470 * 2 * Math.PI + seed * 1.7);
@@ -143,7 +143,7 @@ window.Yarn = (() => {
         const w = smooth(d / 110), nz = noise(l + len * t) * w;
         let ox = 0, oy = 0;
         if (horiz) oy = 5 * w + 15 * nz;
-        else if (gx < 30) ox = (a[0] < vw / 2 ? 1 : -1) * 11 * (nz + w);
+        else if (gx < 30) ox = Math.max(0, gx - 6) * nz;   // margen estrecho: el vaivén no sale del margen
         else ox = 26 * nz;
         out.push([a[0] + dx * len * t + ox, a[1] + dy * len * t + oy]);
       }
@@ -378,10 +378,13 @@ window.Yarn = (() => {
       document.body.appendChild(this.canvas);
       this.S = []; this.drawn = 0; this.target = 0; this.need = true;
       this.build();
-      let t; addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => this.build(), 150); });
+      // solo se rehace la ruta si cambia el ancho: en el móvil la barra del navegador
+      // cambia el alto de la ventana al hacer scroll y no debe mover el hilo
+      let t, vw = document.documentElement.clientWidth;
+      const rebuild = () => { clearTimeout(t); t = setTimeout(() => this.build(), 150); };
+      addEventListener('resize', () => { const w = document.documentElement.clientWidth; if (w !== vw) { vw = w; rebuild(); } });
       // el contenido cambia de alto cuando cargan imágenes y fuentes
-      new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => this.build(), 150); }).observe(document.body);
-      addEventListener('scroll', () => { this.need = true; }, { passive: true });
+      new ResizeObserver(rebuild).observe(document.body);
       styleListeners.add(() => { this.need = true; });
       tickers.add(dt => this.tick(dt));
     }
@@ -504,6 +507,7 @@ window.Yarn = (() => {
       } else {
         pts.push([xAt(side), document.documentElement.scrollHeight + 60]);
       }
+      this.dodge(pts, knots, gx, vw, xAt);
       const fixed = new Set();
       knots.forEach(k => { if (k.i0 != null) for (let i = k.i0; i <= k.i1; i++) fixed.add(i); });
       // seguro: fuera de los nudos, un vértice que hace volver el hilo sobre sí mismo se quita
@@ -532,9 +536,62 @@ window.Yarn = (() => {
       this.resize();
     }
 
+    // Apartarse: donde algo del contenido ocupa el margen por el que baja el hilo
+    // (una imagen a sangre, el carrusel de destacados, el círculo de palabras), el
+    // hilo sale de la pantalla por ese lado y vuelve a entrar cuando hay sitio.
+    dodge(pts, knots, gx, vw, xAt) {
+      const CLEAR = 7, PAD = 30, RAMP = 80;
+      const sel = 'main img, main video, main figure, main p, main h1, main h2, main h3, main li, main blockquote, main .card-media, main .cta, main .btn, main .circulo, main .proyectos-grid.featured';
+      const blocks = [...document.querySelectorAll(sel)]
+        .filter(el => !el.closest('[data-knot], .logo') && el.offsetWidth)
+        .map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top + scrollY, bottom: r.bottom + scrollY }; });
+      for (let i = pts.length - 2; i >= 0; i--) {
+        const a = pts[i], b = pts[i + 1];
+        if (a[0] !== b[0] || b[1] - a[1] < RAMP * 2) continue;
+        const s = a[0] === xAt(-1) ? -1 : a[0] === xAt(1) ? 1 : 0;
+        if (!s) continue;
+        const x = a[0], xo = s < 0 ? -40 : vw + 40;
+        // tramos ocupados de esta bajada, unidos si entre ellos no cabe volver a entrar
+        const busy = [];
+        blocks.filter(r => r.left < x + CLEAR && r.right > x - CLEAR && r.bottom + PAD > a[1] && r.top - PAD < b[1])
+          .map(r => [Math.max(a[1], r.top - PAD), Math.min(b[1], r.bottom + PAD)]).sort((p, q) => p[0] - q[0])
+          .forEach(([t0, t1]) => { const l = busy[busy.length - 1]; if (l && t0 - l[1] < RAMP * 3) l[1] = Math.max(l[1], t1); else busy.push([t0, t1]); });
+        if (!busy.length) continue;
+        const ins = [];
+        let y = a[1];
+        for (const [t0, t1] of busy) {
+          // si no hay sitio antes del obstáculo, sale más en diagonal
+          const leave = Math.max(y, t0 - RAMP), out = clamp(t0, leave + 24, leave + RAMP);
+          if (leave > y + 1) ins.push([x, leave]);
+          const back = Math.max(out, t1) + RAMP;
+          ins.push([xo, out]);
+          if (back < b[1] - 1) { if (t1 > out + 1) ins.push([xo, t1]); ins.push([x, back]); y = back; }
+          else { y = b[1]; break; }
+        }
+        pts.splice(i + 1, 0, ...ins);
+        knots.forEach(k => { if (k.i0 != null && k.i0 > i) { k.i0 += ins.length; k.i1 += ins.length; } });
+      }
+    }
+
+    // El lienzo está en la página (no fijo a la ventana) y cubre una franja algo
+    // más alta que la pantalla: se desplaza con el contenido, así el hilo no tiembla
+    // con el scroll del móvil (que mueve la página antes de que el script se entere).
+    // La franja solo se recoloca cuando la pantalla se acerca a uno de sus bordes.
     resize() {
-      const w = document.documentElement.clientWidth, h = innerHeight;
-      if (this.w !== w || this.h !== h) { this.w = w; this.h = h; this.ctx = fitCanvas(this.canvas, w, h); }
+      const w = document.documentElement.clientWidth;
+      const h = Math.round(Math.min(Math.max(screen.height || 0, innerHeight) * 2.2, Math.max(innerHeight, this.pageH || 0)));
+      if (this.w !== w || this.h !== h) { this.w = w; this.h = h; this.ctx = fitCanvas(this.canvas, w, h); this.top = null; }
+    }
+    band() {
+      // alto de la página sin contar el propio lienzo (que no debe alargarla)
+      const foot = document.querySelector('.site-footer');
+      const pageH = this.pageH = Math.max(innerHeight, foot ? Math.ceil(foot.getBoundingClientRect().bottom + scrollY) : document.body.offsetHeight);
+      this.resize();
+      const vt = scrollY, vb = scrollY + innerHeight, m = innerHeight * 0.2;
+      if (this.top != null && vt >= this.top + (this.top > 0 ? m : 0) && vb <= this.top + this.h - (this.top + this.h < pageH ? m : 0)) return false;
+      this.top = Math.round(clamp(vt - (this.h - innerHeight) / 2, 0, Math.max(0, pageH - this.h)));
+      this.canvas.style.transform = `translateY(${this.top}px)`;
+      return true;
     }
 
     // A cada punto del hilo le toca una altura de lectura Y (monótona): la punta
@@ -605,9 +662,9 @@ window.Yarn = (() => {
         this.drawn += Math.abs(diff) < 1 ? diff : diff * (1 - Math.exp(-dt * 10)); this.need = true;
       }
       if (this.footer && this.drawn >= this.L - 1 && !this.footer.done && this.footer.target < 1) this.footer.draw(0.7);
+      if (this.band()) this.need = true;
       if (!this.need) return; this.need = false;
-      this.resize();
-      const ctx = this.ctx, top = scrollY;
+      const ctx = this.ctx, top = this.top;
       ctx.clearRect(0, 0, this.w, this.h);
       ctx.save(); ctx.translate(0, -top);
       stroke(ctx, this.S, 0, this.drawn, STYLE, { top, bottom: top + this.h });

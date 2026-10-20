@@ -50,7 +50,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* ---------- hilo (canvas de yarn.js) ---------- */
 /* por encima del contenido (pasa sobre las imágenes a sangre), por debajo del menú y el visor */
-.yarn-thread { position: fixed; inset: 0 auto auto 0; z-index: 5; pointer-events: none; }
+.yarn-thread { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; will-change: transform; }
 .has-yarn-underline { position: relative; }
 .yarn-underline { position: absolute; left: 0; bottom: -9px; width: 100%; height: 14px; pointer-events: none; }
 
@@ -208,6 +208,8 @@ section { padding: clamp(64px, 9vw, 140px) var(--gutter); max-width: var(--max);
    El color y la imagen son los únicos datos que necesita cada proyecto. */
 .proyectos-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(48px, 5vw, 80px) clamp(20px, 2.6vw, 40px); padding-bottom: 110px; }
 .proyectos-grid.featured { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.swipe-hint { display: none; }
+@keyframes nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
 .card:nth-child(3n+2) { margin-top: 110px; margin-bottom: -110px; }
 .card a { text-decoration: none; display: block; }
 .card-media {
@@ -407,11 +409,15 @@ section { padding: clamp(64px, 9vw, 140px) var(--gutter); max-width: var(--max);
   /* destacados del inicio: una fila que se desliza, con la siguiente tarjeta asomando */
   .proyectos-grid.featured {
     grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 76%; gap: 16px;
-    overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
     margin: 0 calc(var(--gutter) * -1); padding: 0 var(--gutter) 6px; scroll-padding: 0 var(--gutter);
   }
   .proyectos-grid.featured::-webkit-scrollbar { display: none; }
   .proyectos-grid.featured .card { scroll-snap-align: start; }
+  /* aviso de que la fila se desliza; se apaga al llegar a la última tarjeta */
+  .swipe-hint { display: flex; justify-content: flex-end; align-items: center; gap: .4em; margin: 14px 0 0; font-family: var(--head); font-size: 14px; letter-spacing: .02em; transition: opacity .4s; }
+  .swipe-hint.is-end { opacity: 0; }
+  .swipe-arrow { display: inline-block; animation: nudge 1.4s var(--ease) infinite; }
   .card-info { flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 14px; }
   .serv-summary { grid-template-columns: 1fr; }
   .b-row { flex-wrap: wrap; }

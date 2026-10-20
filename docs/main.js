@@ -50,6 +50,16 @@
     });
   });
 
+  /* ---------------- destacados del inicio: aviso «desliza» ---------------- */
+  const featured = document.querySelector('.proyectos-grid.featured');
+  const hint = document.querySelector('.swipe-hint');
+  if (featured && hint) {
+    const check = () => hint.classList.toggle('is-end', featured.scrollLeft + featured.clientWidth >= featured.scrollWidth - 8);
+    featured.addEventListener('scroll', check, { passive: true });
+    addEventListener('resize', check);
+    check();
+  }
+
   /* ---------------- bloques de proyecto ----------------
      .b-row: fila de imágenes con la misma altura; cada figura crece según su
      proporción, así conviven verticales, cuadradas y panorámicas. */
